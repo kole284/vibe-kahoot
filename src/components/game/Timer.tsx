@@ -40,36 +40,24 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
   }, [isActive, onComplete, skipTimer]);
 
   const progress = (timeLeft / duration) * 100;
-  
-  // Determine the color and pulse animation based on time remaining
-  const getTimerColor = () => {
-    if (timeLeft > duration / 2) return 'bg-green-500';
-    if (timeLeft > duration / 4) return 'bg-yellow-500';
-    return 'bg-red-500';
-  };
-  
-  const shouldPulse = timeLeft <= 5;
 
   return (
     <div className="w-full max-w-md mx-auto">
-      <div className="mb-1 text-center">
-        <span className="text-lg font-semibold">Preostalo vreme:</span>
-      </div>
-      <div className="relative h-8 bg-gray-200 rounded-full overflow-hidden shadow-inner">
+      <div className="relative h-4 bg-gray-200 rounded-full overflow-hidden">
         <motion.div
           initial={{ width: '100%' }}
-          animate={{ 
-            width: `${progress}%`,
-            scale: shouldPulse ? [1, 1.03, 1] : 1
-          }}
-          transition={{ 
-            width: { duration: 1, ease: 'linear' },
-            scale: { repeat: Infinity, duration: 0.5, ease: 'easeInOut' } 
-          }}
-          className={`absolute top-0 left-0 h-full ${getTimerColor()}`}
+          animate={{ width: `${progress}%` }}
+          transition={{ duration: 1, ease: 'linear' }}
+          className={`absolute top-0 left-0 h-full ${
+            timeLeft > duration / 2
+              ? 'bg-green-500'
+              : timeLeft > duration / 4
+              ? 'bg-yellow-500'
+              : 'bg-red-500'
+          }`}
         />
         <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
-          <span className="text-white text-xl font-bold drop-shadow-md">{timeLeft}s</span>
+          <span className="text-white font-bold">{timeLeft}s</span>
         </div>
       </div>
     </div>
