@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useGame } from '../../context/GameContext';
+import { Timer } from './Timer';
 
 const optionColors = {
   A: 'bg-red-500',
@@ -136,6 +137,15 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
             {gameState.session?.categories?.[gameState.session.currentCategory] || 'Category'} • Question {(gameState.session?.currentQuestionIndex || 0) + 1}/8
           </span>
+        </div>
+
+        <div className="mb-6">
+          <Timer
+            duration={30}
+            onComplete={() => {}}
+            isActive={gameState.session?.status === 'playing' && !gameState.session?.isPaused && !showCorrectAnswer}
+            skipTimer={gameState.session?.allPlayersAnswered}
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
