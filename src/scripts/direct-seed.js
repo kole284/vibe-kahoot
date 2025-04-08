@@ -1,7 +1,7 @@
 // Direct JavaScript seed script
-import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, set, push } from 'firebase/database';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+const { initializeApp } = require('firebase/app');
+const { getDatabase, ref, set, push } = require('firebase/database');
+const { getAuth, signInAnonymously } = require('firebase/auth');
 
 // Firebase configuration
 const firebaseConfig = {

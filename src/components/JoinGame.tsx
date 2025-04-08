@@ -15,74 +15,61 @@ export function JoinGame() {
   const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
-    const checkGameExists = async () => {
-      if (!gameId) return;
-      
-      setDebugInfo(`Checking game with ID: ${gameId}`);
-      
+    if (!gameId) {
+      setError('No game ID provided');
+      return;
+    }
+
+    setDebugInfo(`Checking game with ID: ${gameId}`);
+    const gameRef = ref(rtdb, `games/${gameId}`);
+
+    const unsubscribe = onValue(gameRef, (snapshot) => {
       try {
-        // First try the standard path
-        const gameRef = ref(rtdb, `games/${gameId}`);
-        setDebugInfo(`Looking for game at path: games/${gameId}`);
-        
-        // Subscribe to game updates
-        const unsubscribe = onValue(gameRef, (snapshot) => {
-          if (snapshot.exists()) {
-            setGameExists(true);
-            const gameData = snapshot.val() as GameSession;
-            setGameStatus(gameData.status);
-            setDebugInfo(`Game found! Status: ${gameData.status}`);
-          } else {
-            setDebugInfo(`Game not found at path: games/${gameId}. Checking alternative paths...`);
-            
-            // Try alternative path if not found
-            const alternativeRef = ref(rtdb, `game/${gameId}`);
-            get(alternativeRef).then((altSnapshot) => {
-              if (altSnapshot.exists()) {
-                setGameExists(true);
-                const gameData = altSnapshot.val() as GameSession;
-                setGameStatus(gameData.status);
-                setDebugInfo(`Game found at alternative path: game/${gameId}! Status: ${gameData.status}`);
-              } else {
-                setGameExists(false);
-                setError('Game not found');
-                setDebugInfo(`Game not found in any known path. gameId: ${gameId}`);
-              }
-            }).catch(err => {
-              console.error('Error checking alternative path:', err);
-              setDebugInfo(`Error checking alternative path: ${err.message}`);
-            });
+        if (snapshot.exists()) {
+          const gameData = snapshot.val() as GameSession;
+          setGameExists(true);
+          setGameStatus(gameData.status);
+          setDebugInfo(`Game found! Status: ${gameData.status}`);
+          
+          // Check if game is in a valid state
+          if (gameData.status === 'finished') {
+            setError('This game has already ended');
+          } else if (gameData.status === 'playing') {
+            setError('This game is already in progress');
           }
-        }, (error) => {
-          console.error('Error checking game:', error);
-          setError('Failed to check game status');
-          setDebugInfo(`Error checking game: ${error.message}`);
-        });
-        
-        return () => {
-          // Clean up the subscription
-          off(gameRef);
-        };
+        } else {
+          setGameExists(false);
+          setError('Game not found');
+          setDebugInfo(`Game not found with ID: ${gameId}`);
+        }
       } catch (err) {
-        console.error('Error checking game:', err);
-        setError('Failed to check game status');
-        setDebugInfo(`Error checking game: ${(err as Error).message}`);
+        console.error('Error processing game data:', err);
+        setError('Error loading game data');
+        setDebugInfo(`Error processing game data: ${(err as Error).message}`);
       }
+    }, (error) => {
+      console.error('Error checking game:', error);
+      setError('Failed to check game status');
+      setDebugInfo(`Error checking game: ${error.message}`);
+    });
+
+    return () => {
+      off(gameRef);
     };
-    
-    checkGameExists();
   }, [gameId]);
 
   const handleJoinGame = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!gameId || !playerName.trim()) return;
+    if (!gameId || !playerName.trim()) {
+      setError('Please enter your name');
+      return;
+    }
     
     setIsLoading(true);
     setError('');
     
     try {
-      // Check if game is still waiting for players
       const gameRef = ref(rtdb, `games/${gameId}`);
       const snapshot = await get(gameRef);
       
@@ -94,7 +81,14 @@ export function JoinGame() {
       const gameData = snapshot.val() as GameSession;
       
       if (gameData.status !== 'waiting') {
-        setError('Game has already started');
+        setError('Game is no longer accepting players');
+        return;
+      }
+
+      // Check if player name is already taken
+      const existingPlayers = gameData.players || [];
+      if (existingPlayers.some(p => p.name.toLowerCase() === playerName.toLowerCase())) {
+        setError('This name is already taken. Please choose another name.');
         return;
       }
       
@@ -104,19 +98,21 @@ export function JoinGame() {
       
       const player: Player = {
         id: newPlayerRef.key!,
-        name: playerName,
+        name: playerName.trim(),
         score: 0,
         isReady: false
       };
       
       // Add player to the game
       await set(newPlayerRef, player);
+      setDebugInfo(`Successfully joined game as ${player.name}`);
       
       // Navigate to the game lobby
       navigate(`/game/${gameId}/player/${newPlayerRef.key}`);
     } catch (err) {
       console.error('Error joining game:', err);
       setError('Failed to join game. Please try again.');
+      setDebugInfo(`Error joining game: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }
@@ -134,23 +130,37 @@ export function JoinGame() {
           >
             Back to Home
           </button>
+          {debugInfo && (
+            <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-24">
+              <pre>{debugInfo}</pre>
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  if (gameStatus !== 'waiting') {
+  if (gameStatus && gameStatus !== 'waiting') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
         <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Game Already Started</h1>
-          <p className="text-gray-600 mb-6">This game has already started. You cannot join at this time.</p>
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Cannot Join Game</h1>
+          <p className="text-gray-600 mb-6">
+            {gameStatus === 'finished' 
+              ? 'This game has already ended.' 
+              : 'This game is already in progress.'}
+          </p>
           <button
             onClick={() => navigate('/')}
             className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
           >
             Back to Home
           </button>
+          {debugInfo && (
+            <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-24">
+              <pre>{debugInfo}</pre>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -184,6 +194,7 @@ export function JoinGame() {
               className="w-full p-2 border rounded-md"
               placeholder="Enter your name"
               required
+              maxLength={20}
             />
           </div>
           
