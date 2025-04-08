@@ -13,7 +13,7 @@ const firebaseConfig = {
   appId: "1:486709016032:web:699b6739bab04f22782785",
   measurementId: "G-JQVLMKD96K"
 };
-
+//easter egg
 export function BasicTest() {
   const [log, setLog] = useState<string[]>([]);
   const [gamesList, setGamesList] = useState<any[]>([]);
