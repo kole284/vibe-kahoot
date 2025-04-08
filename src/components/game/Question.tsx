@@ -10,7 +10,11 @@ const optionColors = {
   D: 'bg-green-500'
 };
 
-export function Question() {
+interface QuestionProps {
+  showCorrectAnswer?: boolean;
+}
+
+export function Question({ showCorrectAnswer = false }: QuestionProps) {
   const { currentQuestion, submitAnswer, gameState } = useGame();
   const [searchParams] = useSearchParams();
   const [debugInfo, setDebugInfo] = useState<string>('');
@@ -85,7 +89,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   }
 
   const handleAnswer = async (answer: string) => {
-    if (!gameState.session || hasAnswered || gameState.session.showingCorrectAnswer) return;
+    if (!gameState.session || hasAnswered || showCorrectAnswer) return;
     
     setHasAnswered(true);
     setSelectedOption(answer);
@@ -97,7 +101,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
     const baseClass = `p-4 rounded-lg text-white text-lg md:text-xl font-bold ${optionColors[optionKey as keyof typeof optionColors]}`;
     
     // When showing correct answer, highlight the correct one
-    if (gameState.session?.showingCorrectAnswer) {
+    if (showCorrectAnswer) {
       const correctOptionKey = String.fromCharCode(65 + currentQuestion.correctOptionIndex);
       
       if (optionKey === correctOptionKey) {
@@ -140,10 +144,10 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
             return (
               <motion.button
                 key={optionKey}
-                whileHover={!hasAnswered && !(gameState.session?.showingCorrectAnswer) ? { scale: 1.05 } : {}}
-                whileTap={!hasAnswered && !(gameState.session?.showingCorrectAnswer) ? { scale: 0.95 } : {}}
+                whileHover={!hasAnswered && !showCorrectAnswer ? { scale: 1.05 } : {}}
+                whileTap={!hasAnswered && !showCorrectAnswer ? { scale: 0.95 } : {}}
                 onClick={() => handleAnswer(optionKey)}
-                disabled={hasAnswered || !!gameState.session?.showingCorrectAnswer}
+                disabled={hasAnswered || showCorrectAnswer}
                 className={getButtonClass(optionKey)}
               >
                 {optionKey}: {option}
@@ -152,7 +156,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           })}
         </div>
 
-        {gameState.session?.showingCorrectAnswer && (
+        {showCorrectAnswer && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

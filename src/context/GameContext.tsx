@@ -232,6 +232,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       await update(gameRef, {
         showLeaderboard: true,
         roundCompleted: true,
+        currentRound: currentRound + 1,
         updatedAt: new Date().toISOString()
       });
       return;

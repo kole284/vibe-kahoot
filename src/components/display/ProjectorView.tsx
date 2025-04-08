@@ -10,17 +10,39 @@ import { rtdb } from '../../lib/firebase/firebase';
 export function ProjectorView() {
   const { gameState, teams, currentQuestion, nextQuestion, checkAllPlayersAnswered } = useGame();
   const [leaderboardTimer, setLeaderboardTimer] = useState<number | null>(null);
+  const [showingCorrectAnswer, setShowingCorrectAnswer] = useState(false);
+  
+  // Debug - log game state to see what's happening
+  useEffect(() => {
+    console.log("Current game state:", gameState);
+    console.log("Current question:", currentQuestion);
+  }, [gameState, currentQuestion]);
   
   // This effect checks if all players have answered to potentially skip the timer
   useEffect(() => {
     const intervalId = setInterval(() => {
-      if (gameState.session?.status === 'playing' && !gameState.session.showingCorrectAnswer) {
+      if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
         checkAllPlayersAnswered();
       }
     }, 1000);
     
     return () => clearInterval(intervalId);
-  }, [checkAllPlayersAnswered, gameState.session?.status, gameState.session?.showingCorrectAnswer]);
+  }, [checkAllPlayersAnswered, gameState.session?.status, showingCorrectAnswer]);
+  
+  // This effect manages showing correct answer timing
+  useEffect(() => {
+    if (showingCorrectAnswer) {
+      // If we're showing the correct answer, wait 3 seconds then go to next question
+      console.log("Showing correct answer, will auto-advance in 3 seconds");
+      const timerId = setTimeout(() => {
+        console.log("3 seconds elapsed, moving to next question");
+        setShowingCorrectAnswer(false);
+        nextQuestion();
+      }, 3000);
+      
+      return () => clearTimeout(timerId);
+    }
+  }, [nextQuestion, showingCorrectAnswer]);
   
   // This effect manages the leaderboard timer between rounds
   useEffect(() => {
@@ -47,14 +69,10 @@ export function ProjectorView() {
   }, [gameState.session?.showLeaderboard, nextQuestion, leaderboardTimer]);
 
   const handleTimerComplete = () => {
-    if (gameState.session?.status === 'playing' && !gameState.session.showingCorrectAnswer) {
+    if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
       // Show correct answer
+      setShowingCorrectAnswer(true);
       updateGameShowingCorrectAnswer(true);
-      
-      // Wait 3 seconds then move to next question
-      setTimeout(() => {
-        nextQuestion();
-      }, 3000);
     }
   };
   
@@ -81,7 +99,7 @@ export function ProjectorView() {
             Leaderboard
           </h2>
           <p className="text-center text-xl mb-8">
-            Round {gameState.session.currentRound} completed!
+            Round {gameState.session.currentRound + 1} completed!
             <br />
             Next category in {leaderboardTimer} seconds...
           </p>
@@ -135,13 +153,15 @@ export function ProjectorView() {
       <>
         {currentQuestion && (
           <>
-            <Timer
-              duration={30}
-              onComplete={handleTimerComplete}
-              isActive={gameState.session.status === 'playing' && !gameState.session.isPaused}
-              skipTimer={gameState.session.allPlayersAnswered}
-            />
-            <Question />
+            <div className="mb-4">
+              <Timer
+                duration={30}
+                onComplete={handleTimerComplete}
+                isActive={gameState.session.status === 'playing' && !gameState.session.isPaused && !showingCorrectAnswer}
+                skipTimer={gameState.session.allPlayersAnswered}
+              />
+            </div>
+            <Question showCorrectAnswer={showingCorrectAnswer} />
           </>
         )}
       </>
