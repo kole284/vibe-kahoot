@@ -109,6 +109,32 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     };
   }, [gameId, playerId]);
 
+  // Load current question when game session changes
+  useEffect(() => {
+    if (!gameState.session) {
+      setCurrentQuestion(null);
+      return;
+    }
+
+    const { currentQuestionIndex, currentCategory } = gameState.session;
+    
+    // Make sure questions for the current category exist
+    if (!gameState.session.questions?.[currentCategory]) {
+      setCurrentQuestion(null);
+      return;
+    }
+    
+    // Get current question from the correct category
+    const question = gameState.session.questions[currentCategory][currentQuestionIndex];
+    
+    // Only set the question if it exists
+    if (question) {
+      setCurrentQuestion(question);
+    } else {
+      setCurrentQuestion(null);
+    }
+  }, [gameState.session]);
+
   // Join Game function for players to join a game
   const joinGame = async (teamName: string, tableNumber: number): Promise<void> => {
     if (!gameId) throw new Error('Game ID is required');
@@ -126,59 +152,45 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     await set(newTeamRef, newTeamData);
   };
 
-  // Submit answer for a question
+  // Submit answer function
   const submitAnswer = async (answer: string): Promise<void> => {
-    if (!gameId || !playerId || !currentQuestion) {
-      console.error('Missing required data for submitting answer');
-      return;
+    if (!gameId || !playerId || !currentQuestion || !gameState.session) {
+      throw new Error('Missing required data for submitting answer');
     }
     
     try {
-      console.log(`Submitting answer ${answer} for player ${playerId}`);
+      // Convert answer to index (A=0, B=1, etc)
+      const answerIndex = answer.charCodeAt(0) - 65;
       
-      // Get current question from game session
-      const gameRef = ref(rtdb, `games/${gameId}`);
-      const gameSnapshot = await get(gameRef);
+      // Check if answer is correct
+      const isCorrect = answerIndex === currentQuestion.correctOptionIndex;
       
-      if (!gameSnapshot.exists()) {
-        console.error('Game not found');
-        return;
-      }
+      // Calculate points based on correctness
+      const points = isCorrect ? currentQuestion.points : 0;
       
-      const gameData = gameSnapshot.val() as GameSession;
-      const currentIndex = gameData.currentQuestionIndex;
-      const currentQ = gameData.questions[currentIndex];
-      
-      if (!currentQ) {
-        console.error('Current question not found');
-        return;
-      }
-      
-      // Calculate if answer is correct (convert A, B, C, D to 0, 1, 2, 3)
-      const answerIndex = answer.charCodeAt(0) - 'A'.charCodeAt(0);
-      const isCorrect = answerIndex === currentQ.correctOptionIndex;
-      const points = isCorrect ? currentQ.points : 0;
-      
-      // Update player's score and answer
+      // Update player's answer in the database
       const playerRef = ref(rtdb, `games/${gameId}/players/${playerId}`);
-      const playerData = gameState.currentPlayer;
+      const playerData = await get(playerRef);
       
-      if (playerData) {
-        const newScore = (playerData.score || 0) + points;
-        await update(playerRef, {
-          score: newScore,
-          lastAnswer: {
-            questionId: currentQ.id,
-            selectedOptionIndex: answerIndex,
-            timeSpent: 0, // Could calculate based on when question was shown
-            isCorrect: isCorrect
-          }
-        });
-        
-        console.log(`Answer submitted successfully. Correct: ${isCorrect}, Points: ${points}`);
+      if (!playerData.exists()) {
+        throw new Error('Player not found');
       }
+      
+      // Update player's score and store their answer
+      await update(playerRef, {
+        score: (playerData.val().score || 0) + points,
+        lastAnswer: {
+          questionId: currentQuestion.id,
+          selectedOptionIndex: answerIndex,
+          timeSpent: 30 - (gameState.session.timeRemaining || 0), // Calculate time spent
+          isCorrect: isCorrect
+        }
+      });
+      
+      return;
     } catch (error) {
       console.error('Error submitting answer:', error);
+      throw error;
     }
   };
 
@@ -201,13 +213,82 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (!gameId || !gameState.session) throw new Error('Game session is required');
     
     const currentIndex = gameState.session.currentQuestionIndex;
+    const currentCategory = gameState.session.currentCategory || 0;
+    const currentRound = gameState.session.currentRound || 0;
     const gameRef = ref(rtdb, `games/${gameId}`);
     
+    // Reset showing correct answer flag
+    await update(gameRef, {
+      showingCorrectAnswer: false,
+      allPlayersAnswered: false
+    });
+    
+    // Check if we've completed all questions in this round
+    if (currentIndex >= 7) { // 0-based index, so 7 means 8 questions
+      // Show leaderboard between rounds
+      await update(gameRef, {
+        showLeaderboard: true,
+        roundCompleted: true,
+        updatedAt: new Date().toISOString()
+      });
+      return;
+    }
+    
+    // If we're showing the leaderboard and ready for next category
+    if (gameState.session.showLeaderboard) {
+      // Move to next category or end game if all categories are completed
+      if (currentCategory >= 5) { // 0-based index, so 5 means 6 categories
+        // End game after all categories
+        await update(gameRef, {
+          status: 'finished',
+          showLeaderboard: false,
+          endedAt: new Date().toISOString()
+        });
+        return;
+      } else {
+        // Move to next category
+        await update(gameRef, {
+          currentCategory: currentCategory + 1,
+          currentQuestionIndex: 0,
+          showLeaderboard: false,
+          timeRemaining: 30,
+          updatedAt: new Date().toISOString()
+        });
+        return;
+      }
+    }
+    
+    // Otherwise, just move to next question in current round
     await update(gameRef, {
       currentQuestionIndex: currentIndex + 1,
       timeRemaining: 30,
       updatedAt: new Date().toISOString()
     });
+  };
+
+  // Check if all players have answered the current question
+  const checkAllPlayersAnswered = (): void => {
+    if (!gameId || !gameState.session) return;
+    
+    // Get all players and the current question ID
+    const players = gameState.session.players;
+    if (!players || players.length === 0) return;
+    
+    const currentQuestionId = gameState.session.questions?.[gameState.session.currentCategory]?.[gameState.session.currentQuestionIndex]?.id;
+    if (!currentQuestionId) return;
+    
+    // Check if all players have answered this question
+    const allAnswered = players.every(player => 
+      player.lastAnswer && player.lastAnswer.questionId === currentQuestionId
+    );
+    
+    // If all players have answered, update the game state
+    if (allAnswered && !gameState.session.allPlayersAnswered) {
+      const gameRef = ref(rtdb, `games/${gameId}`);
+      update(gameRef, {
+        allPlayersAnswered: true
+      });
+    }
   };
 
   const value: GameContextType = {
@@ -217,7 +298,8 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     joinGame,
     submitAnswer,
     startGame,
-    nextQuestion
+    nextQuestion,
+    checkAllPlayersAnswered
   };
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

@@ -5,6 +5,7 @@ import { rtdb, auth } from '../lib/firebase/firebase';
 import { signInAnonymously } from 'firebase/auth';
 import { GameSession, Question } from '../types';
 import { GameQRCode } from './QRCode';
+import { seedData } from '../lib/firebase/seed-data';
 
 export function CreateGame() {
   const navigate = useNavigate();
@@ -12,159 +13,97 @@ export function CreateGame() {
   const [error, setError] = useState('');
   const [gameId, setGameId] = useState<string | null>(null);
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const [isCreated, setIsCreated] = useState(false);
 
   const createGame = async () => {
     setIsLoading(true);
     setError('');
     setDebugInfo('Starting game creation...');
-
+    
     try {
-      // Ensure we're authenticated before accessing the database
+      // Try to authenticate anonymously
       try {
         setDebugInfo('Authenticating anonymously...');
         await signInAnonymously(auth);
         setDebugInfo('Authentication successful');
       } catch (authError) {
         console.error('Authentication error:', authError);
-        setDebugInfo('Authentication failed, proceeding with sample questions...');
-        // Continue with sample questions if authentication fails
+        setDebugInfo(`Authentication failed: ${(authError as Error).message}`);
+        // Continue despite auth error - we'll use fallback dummy questions
       }
       
-      // Get random questions from Realtime Database
+      // Load questions for the quiz
+      let questions: Question[][] = [];
+      let categories: string[] = [];
+      
       try {
-        setDebugInfo('Fetching questions from Realtime Database...');
-        const questionsRef = ref(rtdb, 'questions');
-        const questionsSnapshot = await get(questionsRef);
-        
-        let questions: Question[] = [];
-        
-        if (questionsSnapshot.exists()) {
-          questionsSnapshot.forEach((childSnapshot) => {
-            const questionData = childSnapshot.val();
-            // Convert ISO string dates to Date objects
-            const createdAt = questionData.createdAt ? new Date(questionData.createdAt) : new Date();
-            const updatedAt = questionData.updatedAt ? new Date(questionData.updatedAt) : new Date();
-            
-            questions.push({
-              id: childSnapshot.key!,
-              ...questionData,
-              createdAt,
-              updatedAt
-            });
-          });
-          
-          setDebugInfo(`Found ${questions.length} questions. First question: ${JSON.stringify(questions[0]).substring(0, 100)}...`);
-        }
-
-        // If we don't have questions or authentication failed, create sample ones
-        if (questions.length === 0) {
-          setDebugInfo('No questions found. Creating sample questions...');
-          // We'll use placeholder questions
-          const sampleQuestions: Question[] = [
-            {
-              id: 'sample1',
-              text: 'What is 2+2?',
-              options: ['3', '4', '5', '6'],
-              correctOptionIndex: 1,
-              timeLimit: 30,
-              points: 100,
-              category: 'Math',
-              difficulty: 'easy',
-              createdAt: new Date(),
-              updatedAt: new Date()
-            },
-            {
-              id: 'sample2',
-              text: 'What is the capital of France?',
-              options: ['London', 'Berlin', 'Paris', 'Madrid'],
-              correctOptionIndex: 2,
-              timeLimit: 30,
-              points: 100,
-              category: 'Geography',
-              difficulty: 'easy',
-              createdAt: new Date(),
-              updatedAt: new Date()
-            }
-          ];
-
-          // Create a new game session
-          setDebugInfo('Creating new game session with sample questions...');
-          const gamesRef = ref(rtdb, 'games');
-          const newGameRef = push(gamesRef);
-          
-          const gameSession: Omit<GameSession, 'id'> = {
-            hostId: 'current-user-id',
-            status: 'waiting',
-            players: [],
-            currentQuestionIndex: 0,
-            questions: sampleQuestions,
-            isPaused: false,
-            timeRemaining: 30,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
-
-          // Save the game session to the database
-          setDebugInfo('Saving game session to database...');
-          await set(newGameRef, gameSession);
-          
-          // Set the game ID to display the QR code
-          setDebugInfo('Game created successfully with ID: ' + newGameRef.key);
-          setGameId(newGameRef.key);
+        // Try to seed data or load from database
+        setDebugInfo('Attempting to seed data...');
+        const seedDataId = await seedData();
+        if (seedDataId) {
+          setDebugInfo(`Seed data created successfully with game ID: ${seedDataId}`);
+          setGameId(seedDataId);
+          setIsCreated(true);
           return;
         }
-
-        // If we have questions, use them
-        setDebugInfo(`Found ${questions.length} questions.`);
-        
-        // Shuffle questions and take first 10
-        const shuffledQuestions = [...questions]
-          .sort(() => Math.random() - 0.5)
-          .slice(0, Math.min(questions.length, 10));
-        
-        setDebugInfo(`Selected ${shuffledQuestions.length} questions for the game.`);
-
-        // Create a new game session
-        setDebugInfo('Creating new game session...');
-        const gamesRef = ref(rtdb, 'games');
-        const newGameRef = push(gamesRef);
-        const gameId = newGameRef.key!;
-        
-        setDebugInfo(`Generated game ID: ${gameId}. Creating at path: games/${gameId}`);
-        
-        const gameSession: Omit<GameSession, 'id'> = {
-          hostId: 'current-user-id', // Replace with actual user ID when auth is implemented
-          status: 'waiting',
-          players: [],
-          currentQuestionIndex: 0,
-          questions: shuffledQuestions,
-          isPaused: false,
-          timeRemaining: 30,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        };
-
-        // Save the game session to the database
-        setDebugInfo(`Saving game session to database at path: games/${gameId}`);
-        await set(newGameRef, gameSession);
-        
-        // Also log the URL that will be generated for the QR code
-        const baseUrl = window.location.origin;
-        const joinUrl = `${baseUrl}/join/${gameId}`;
-        setDebugInfo(`Game created successfully! Join URL: ${joinUrl}`);
-        
-        // Set the game ID to display the QR code
-        setGameId(gameId);
-      } catch (err) {
-        const error = err as Error;
-        setDebugInfo(`Error fetching questions: ${error.message}`);
-        throw new Error(`Error fetching questions: ${error.message}`);
+      } catch (seedError) {
+        console.error('Error with seed data:', seedError);
+        setDebugInfo(`Error with seed data: ${(seedError as Error).message}`);
+        // Continue with fallback options
       }
+
+      // If seed data failed, create a simple game manually
+      setDebugInfo('Creating new game session with basic structure...');
+      const gamesRef = ref(rtdb, 'games');
+      const newGameRef = push(gamesRef);
+      
+      const gameSession: Omit<GameSession, 'id'> = {
+        hostId: 'current-user-id',
+        status: 'waiting',
+        players: [],
+        currentQuestionIndex: 0,
+        currentCategory: 0,
+        currentRound: 0,
+        questions: [[
+          {
+            id: 'q1',
+            text: 'Koji je glavni grad Srbije?',
+            options: ['Niš', 'Beograd', 'Novi Sad', 'Kragujevac'],
+            correctOptionIndex: 1,
+            timeLimit: 30,
+            points: 100,
+            category: 'Opšte znanje',
+            difficulty: 'easy',
+            createdAt: new Date(),
+            updatedAt: new Date()
+          }
+        ]],
+        categories: ['Opšte znanje'],
+        showLeaderboard: false,
+        isPaused: false,
+        timeRemaining: 30,
+        showingCorrectAnswer: false,
+        allPlayersAnswered: false,
+        roundCompleted: false,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      // Save the game session to the database
+      setDebugInfo('Saving game session to database...');
+      await set(newGameRef, {
+        ...gameSession,
+        id: newGameRef.key
+      });
+      
+      // Set the game ID to display the QR code
+      setDebugInfo('Game created successfully with ID: ' + newGameRef.key);
+      setGameId(newGameRef.key!);
+      setIsCreated(true);
     } catch (err) {
-      const error = err as Error;
       console.error('Error creating game:', err);
-      setError(`Failed to create game: ${error.message}`);
-      setDebugInfo(`Error creating game: ${error.message}`);
+      setError('Failed to create game. Please try again.');
+      setDebugInfo(`Error creating game: ${(err as Error).message}`);
     } finally {
       setIsLoading(false);
     }

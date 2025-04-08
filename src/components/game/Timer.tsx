@@ -5,12 +5,24 @@ interface TimerProps {
   duration: number;
   onComplete: () => void;
   isActive: boolean;
+  skipTimer?: boolean;
 }
 
-export function Timer({ duration, onComplete, isActive }: TimerProps) {
+export function Timer({ duration, onComplete, isActive, skipTimer = false }: TimerProps) {
   const [timeLeft, setTimeLeft] = useState(duration);
 
   useEffect(() => {
+    // Reset timer when duration changes
+    setTimeLeft(duration);
+  }, [duration]);
+
+  useEffect(() => {
+    // Skip timer if all players have answered
+    if (skipTimer) {
+      onComplete();
+      return;
+    }
+    
     if (!isActive) return;
 
     const timer = setInterval(() => {
@@ -25,7 +37,7 @@ export function Timer({ duration, onComplete, isActive }: TimerProps) {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isActive, onComplete]);
+  }, [isActive, onComplete, skipTimer]);
 
   const progress = (timeLeft / duration) * 100;
 

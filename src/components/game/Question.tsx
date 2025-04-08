@@ -14,8 +14,17 @@ export function Question() {
   const { currentQuestion, submitAnswer, gameState } = useGame();
   const [searchParams] = useSearchParams();
   const [debugInfo, setDebugInfo] = useState<string>('');
+  const [hasAnswered, setHasAnswered] = useState(false);
+  const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  
   const gameId = searchParams.get('gameId');
   const playerId = searchParams.get('playerId');
+
+  useEffect(() => {
+    // Reset state when question changes
+    setHasAnswered(false);
+    setSelectedOption(null);
+  }, [currentQuestion?.id]);
 
   useEffect(() => {
     // Log debug information
@@ -76,7 +85,36 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   }
 
   const handleAnswer = async (answer: string) => {
+    if (!gameState.session || hasAnswered || gameState.session.showingCorrectAnswer) return;
+    
+    setHasAnswered(true);
+    setSelectedOption(answer);
     await submitAnswer(answer);
+  };
+
+  // Function to determine button class based on game state and answer
+  const getButtonClass = (optionKey: string) => {
+    const baseClass = `p-4 rounded-lg text-white text-lg md:text-xl font-bold ${optionColors[optionKey as keyof typeof optionColors]}`;
+    
+    // When showing correct answer, highlight the correct one
+    if (gameState.session?.showingCorrectAnswer) {
+      const correctOptionKey = String.fromCharCode(65 + currentQuestion.correctOptionIndex);
+      
+      if (optionKey === correctOptionKey) {
+        return `${baseClass} ring-4 ring-green-300 bg-opacity-100`;
+      } else if (optionKey === selectedOption) {
+        return `${baseClass} opacity-50 bg-opacity-50`;
+      } else {
+        return `${baseClass} opacity-50 bg-opacity-50`;
+      }
+    }
+    
+    // When player has answered but answers aren't shown yet
+    if (hasAnswered && optionKey === selectedOption) {
+      return `${baseClass} ring-2 ring-white`;
+    }
+    
+    return baseClass;
   };
 
   return (
@@ -86,9 +124,15 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
       className="flex flex-col items-center justify-center p-4 min-h-screen"
     >
       <div className="w-full max-w-2xl p-6 bg-white rounded-lg shadow-lg">
-        <h2 className="text-2xl md:text-3xl font-bold mb-8 text-center">
+        <h2 className="text-2xl md:text-3xl font-bold mb-2 text-center">
           {currentQuestion.text}
         </h2>
+        
+        <div className="mb-6 text-center">
+          <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+            {gameState.session?.categories?.[gameState.session.currentCategory] || 'Category'} • Question {(gameState.session?.currentQuestionIndex || 0) + 1}/8
+          </span>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {currentQuestion.options.map((option, index) => {
@@ -96,10 +140,11 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
             return (
               <motion.button
                 key={optionKey}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={!hasAnswered && !(gameState.session?.showingCorrectAnswer) ? { scale: 1.05 } : {}}
+                whileTap={!hasAnswered && !(gameState.session?.showingCorrectAnswer) ? { scale: 0.95 } : {}}
                 onClick={() => handleAnswer(optionKey)}
-                className={`${optionColors[optionKey as keyof typeof optionColors]} p-4 rounded-lg text-white text-lg md:text-xl font-bold`}
+                disabled={hasAnswered || !!gameState.session?.showingCorrectAnswer}
+                className={getButtonClass(optionKey)}
               >
                 {optionKey}: {option}
               </motion.button>
@@ -107,7 +152,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           })}
         </div>
 
-        {gameState.session.status === 'finished' && (
+        {gameState.session?.showingCorrectAnswer && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

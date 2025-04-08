@@ -55,6 +55,7 @@ export interface GameContextType {
   submitAnswer: (answer: string) => Promise<void>;
   startGame: () => Promise<void>;
   nextQuestion: () => Promise<void>;
+  checkAllPlayersAnswered: () => void;
 }
 
 export interface User {
@@ -99,11 +100,18 @@ export interface GameSession {
   status: 'waiting' | 'playing' | 'finished';
   players: Player[];
   currentQuestionIndex: number;
-  questions: Question[];
+  currentRound: number;
+  currentCategory: number;
+  questions: Question[][];  // Array of arrays, first dimension is category, second is questions
+  categories: string[];
+  showLeaderboard: boolean;
   isPaused: boolean;
   timeRemaining: number;
   createdAt: Date;
   updatedAt: Date;
+  roundCompleted: boolean;
+  showingCorrectAnswer: boolean;
+  allPlayersAnswered: boolean;
 }
 
 export interface Player {
