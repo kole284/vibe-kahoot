@@ -101,14 +101,21 @@ export function JoinGame() {
       }
 
       // Check if player name is already taken
-      const existingPlayers = gameData.players || [];
-      if (existingPlayers.some(p => p.name.toLowerCase() === playerName.toLowerCase())) {
+      const playersRef = ref(rtdb, `games/${gameId}/players`);
+      const playersSnapshot = await get(playersRef);
+      const existingPlayers = playersSnapshot.val() || {};
+      
+      // Check if any existing player has the same name
+      const isNameTaken = Object.values(existingPlayers).some((player: any) => 
+        player.name.toLowerCase() === playerName.toLowerCase()
+      );
+      
+      if (isNameTaken) {
         setError('This name is already taken. Please choose another name.');
         return;
       }
       
       // Create a new player
-      const playersRef = ref(rtdb, `games/${gameId}/players`);
       const newPlayerRef = push(playersRef);
       
       const player: Player = {
