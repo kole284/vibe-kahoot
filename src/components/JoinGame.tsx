@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ref, get, set, push, onValue, off } from 'firebase/database';
-import { rtdb } from '../lib/firebase/firebase';
+import { rtdb, auth } from '../lib/firebase/firebase';
+import { signInAnonymously } from 'firebase/auth';
 import { GameSession, Player } from '../types';
 
 export function JoinGame() {
@@ -68,8 +69,22 @@ export function JoinGame() {
     
     setIsLoading(true);
     setError('');
+    setDebugInfo('Starting to join game...');
     
     try {
+      // Authenticate anonymously first
+      try {
+        setDebugInfo('Authenticating anonymously...');
+        await signInAnonymously(auth);
+        setDebugInfo('Authentication successful');
+      } catch (authError) {
+        console.error('Authentication error:', authError);
+        setDebugInfo(`Authentication failed: ${(authError as Error).message}`);
+        setError('Failed to authenticate. Please try again.');
+        return;
+      }
+      
+      // Now try to join the game
       const gameRef = ref(rtdb, `games/${gameId}`);
       const snapshot = await get(gameRef);
       
@@ -104,6 +119,7 @@ export function JoinGame() {
       };
       
       // Add player to the game
+      setDebugInfo(`Adding player to game: ${player.name}`);
       await set(newPlayerRef, player);
       setDebugInfo(`Successfully joined game as ${player.name}`);
       
