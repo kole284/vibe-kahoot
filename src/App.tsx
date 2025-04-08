@@ -10,6 +10,7 @@ import { CreateGame } from './components/CreateGame';
 import { AdminDashboard } from './components/AdminDashboard';
 import { JoinGame } from './components/JoinGame';
 import { GameLobby } from './components/GameLobby';
+import { GameTester } from './components/GameTester';
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
               <Route path="/admin/:gameId" element={<AdminDashboard />} />
               <Route path="/join/:gameId" element={<JoinGame />} />
               <Route path="/game/:gameId/player/:playerId" element={<GameLobby />} />
+              <Route path="/test-game/:gameId" element={<GameTester />} />
             </Routes>
           </main>
           <Footer />
