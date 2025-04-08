@@ -40,11 +40,20 @@ export function CreateGame() {
         
         if (questionsSnapshot.exists()) {
           questionsSnapshot.forEach((childSnapshot) => {
+            const questionData = childSnapshot.val();
+            // Convert ISO string dates to Date objects
+            const createdAt = questionData.createdAt ? new Date(questionData.createdAt) : new Date();
+            const updatedAt = questionData.updatedAt ? new Date(questionData.updatedAt) : new Date();
+            
             questions.push({
               id: childSnapshot.key!,
-              ...childSnapshot.val()
+              ...questionData,
+              createdAt,
+              updatedAt
             });
           });
+          
+          setDebugInfo(`Found ${questions.length} questions. First question: ${JSON.stringify(questions[0]).substring(0, 100)}...`);
         }
 
         // If we don't have questions or authentication failed, create sample ones
