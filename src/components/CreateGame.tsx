@@ -119,6 +119,9 @@ export function CreateGame() {
         setDebugInfo('Creating new game session...');
         const gamesRef = ref(rtdb, 'games');
         const newGameRef = push(gamesRef);
+        const gameId = newGameRef.key!;
+        
+        setDebugInfo(`Generated game ID: ${gameId}. Creating at path: games/${gameId}`);
         
         const gameSession: Omit<GameSession, 'id'> = {
           hostId: 'current-user-id', // Replace with actual user ID when auth is implemented
@@ -133,12 +136,16 @@ export function CreateGame() {
         };
 
         // Save the game session to the database
-        setDebugInfo('Saving game session to database...');
+        setDebugInfo(`Saving game session to database at path: games/${gameId}`);
         await set(newGameRef, gameSession);
         
+        // Also log the URL that will be generated for the QR code
+        const baseUrl = window.location.origin;
+        const joinUrl = `${baseUrl}/join/${gameId}`;
+        setDebugInfo(`Game created successfully! Join URL: ${joinUrl}`);
+        
         // Set the game ID to display the QR code
-        setDebugInfo('Game created successfully with ID: ' + newGameRef.key);
-        setGameId(newGameRef.key);
+        setGameId(gameId);
       } catch (err) {
         const error = err as Error;
         setDebugInfo(`Error fetching questions: ${error.message}`);

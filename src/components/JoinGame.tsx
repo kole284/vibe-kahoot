@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ref, get, set, push } from 'firebase/database';
+import { ref, get, set, push, onValue, off } from 'firebase/database';
 import { rtdb } from '../lib/firebase/firebase';
 import { GameSession, Player } from '../types';
 
@@ -12,26 +12,61 @@ export function JoinGame() {
   const [error, setError] = useState('');
   const [gameExists, setGameExists] = useState(false);
   const [gameStatus, setGameStatus] = useState<string | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   useEffect(() => {
     const checkGameExists = async () => {
       if (!gameId) return;
       
+      setDebugInfo(`Checking game with ID: ${gameId}`);
+      
       try {
+        // First try the standard path
         const gameRef = ref(rtdb, `games/${gameId}`);
-        const snapshot = await get(gameRef);
+        setDebugInfo(`Looking for game at path: games/${gameId}`);
         
-        if (snapshot.exists()) {
-          setGameExists(true);
-          const gameData = snapshot.val() as GameSession;
-          setGameStatus(gameData.status);
-        } else {
-          setGameExists(false);
-          setError('Game not found');
-        }
+        // Subscribe to game updates
+        const unsubscribe = onValue(gameRef, (snapshot) => {
+          if (snapshot.exists()) {
+            setGameExists(true);
+            const gameData = snapshot.val() as GameSession;
+            setGameStatus(gameData.status);
+            setDebugInfo(`Game found! Status: ${gameData.status}`);
+          } else {
+            setDebugInfo(`Game not found at path: games/${gameId}. Checking alternative paths...`);
+            
+            // Try alternative path if not found
+            const alternativeRef = ref(rtdb, `game/${gameId}`);
+            get(alternativeRef).then((altSnapshot) => {
+              if (altSnapshot.exists()) {
+                setGameExists(true);
+                const gameData = altSnapshot.val() as GameSession;
+                setGameStatus(gameData.status);
+                setDebugInfo(`Game found at alternative path: game/${gameId}! Status: ${gameData.status}`);
+              } else {
+                setGameExists(false);
+                setError('Game not found');
+                setDebugInfo(`Game not found in any known path. gameId: ${gameId}`);
+              }
+            }).catch(err => {
+              console.error('Error checking alternative path:', err);
+              setDebugInfo(`Error checking alternative path: ${err.message}`);
+            });
+          }
+        }, (error) => {
+          console.error('Error checking game:', error);
+          setError('Failed to check game status');
+          setDebugInfo(`Error checking game: ${error.message}`);
+        });
+        
+        return () => {
+          // Clean up the subscription
+          off(gameRef);
+        };
       } catch (err) {
         console.error('Error checking game:', err);
         setError('Failed to check game status');
+        setDebugInfo(`Error checking game: ${(err as Error).message}`);
       }
     };
     
@@ -128,6 +163,12 @@ export function JoinGame() {
         
         {error && (
           <p className="text-red-500 text-sm mb-4">{error}</p>
+        )}
+        
+        {debugInfo && (
+          <div className="mb-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-24">
+            <pre>{debugInfo}</pre>
+          </div>
         )}
         
         <form onSubmit={handleJoinGame}>
