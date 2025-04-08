@@ -106,7 +106,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
       const correctOptionKey = String.fromCharCode(65 + currentQuestion.correctOptionIndex);
       
       if (optionKey === correctOptionKey) {
-        return `${baseClass} ring-4 ring-green-300 bg-opacity-100`;
+        return `${baseClass} ring-4 ring-green-300 bg-opacity-100 scale-105 shadow-lg`;
       } else if (optionKey === selectedOption) {
         return `${baseClass} opacity-50 bg-opacity-50`;
       } else {
@@ -151,11 +151,21 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {currentQuestion.options.map((option, index) => {
             const optionKey = String.fromCharCode(65 + index);
+            const isCorrectAnswer = showCorrectAnswer && optionKey === String.fromCharCode(65 + currentQuestion.correctOptionIndex);
+            
             return (
               <motion.button
                 key={optionKey}
                 whileHover={!hasAnswered && !showCorrectAnswer ? { scale: 1.05 } : {}}
                 whileTap={!hasAnswered && !showCorrectAnswer ? { scale: 0.95 } : {}}
+                animate={isCorrectAnswer ? {
+                  scale: [1, 1.1, 1.05],
+                  transition: {
+                    duration: 0.5,
+                    times: [0, 0.5, 1],
+                    ease: "easeInOut"
+                  }
+                } : {}}
                 onClick={() => handleAnswer(optionKey)}
                 disabled={hasAnswered || showCorrectAnswer}
                 className={getButtonClass(optionKey)}
@@ -172,7 +182,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
             animate={{ opacity: 1, y: 0 }}
             className="mt-8 text-center"
           >
-            <p className="text-xl">
+            <p className="text-xl font-bold text-green-600">
               Correct answer: {String.fromCharCode(65 + currentQuestion.correctOptionIndex)}
             </p>
           </motion.div>
@@ -180,7 +190,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
       </div>
       
       {debugInfo && (
-        <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-32 w-full max-w-xl">
+        <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-64 w-full max-w-xl">
           <pre className="whitespace-pre-wrap break-all">{debugInfo}</pre>
         </div>
       )}
