@@ -21,6 +21,7 @@ export function Question({ showCorrectAnswer = false }: QuestionProps) {
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [hasAnswered, setHasAnswered] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [showAnswer, setShowAnswer] = useState(false);
   
   const gameId = searchParams.get('gameId');
   const playerId = searchParams.get('playerId');
@@ -29,6 +30,7 @@ export function Question({ showCorrectAnswer = false }: QuestionProps) {
     // Reset state when question changes
     setHasAnswered(false);
     setSelectedOption(null);
+    setShowAnswer(false);
   }, [currentQuestion?.id]);
 
   useEffect(() => {
@@ -142,7 +144,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
         <div className="mb-6">
           <Timer
             duration={30}
-            onComplete={() => {}}
+            onComplete={() => setShowAnswer(true)}
             isActive={gameState.session?.status === 'playing' && !gameState.session?.isPaused && !showCorrectAnswer}
             skipTimer={gameState.session?.allPlayersAnswered}
           />
@@ -151,13 +153,13 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {currentQuestion.options.map((option, index) => {
             const optionKey = String.fromCharCode(65 + index);
-            const isCorrectAnswer = showCorrectAnswer && optionKey === String.fromCharCode(65 + currentQuestion.correctOptionIndex);
+            const isCorrectAnswer = (showCorrectAnswer || showAnswer) && optionKey === String.fromCharCode(65 + currentQuestion.correctOptionIndex);
             
             return (
               <motion.button
                 key={optionKey}
-                whileHover={!hasAnswered && !showCorrectAnswer ? { scale: 1.05 } : {}}
-                whileTap={!hasAnswered && !showCorrectAnswer ? { scale: 0.95 } : {}}
+                whileHover={!hasAnswered && !showCorrectAnswer && !showAnswer ? { scale: 1.05 } : {}}
+                whileTap={!hasAnswered && !showCorrectAnswer && !showAnswer ? { scale: 0.95 } : {}}
                 animate={isCorrectAnswer ? {
                   scale: [1, 1.1, 1.05],
                   transition: {
@@ -167,7 +169,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
                   }
                 } : {}}
                 onClick={() => handleAnswer(optionKey)}
-                disabled={hasAnswered || showCorrectAnswer}
+                disabled={hasAnswered || showCorrectAnswer || showAnswer}
                 className={getButtonClass(optionKey)}
               >
                 {optionKey}: {option}
@@ -176,7 +178,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           })}
         </div>
 
-        {showCorrectAnswer && (
+        {(showCorrectAnswer || showAnswer) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
