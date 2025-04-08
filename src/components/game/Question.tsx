@@ -12,16 +12,19 @@ const optionColors = {
 };
 
 interface QuestionProps {
+  showDebugInfo?: boolean;
   showCorrectAnswer?: boolean;
+  onShowCorrectAnswer?: () => void;
 }
 
-export function Question({ showCorrectAnswer = false }: QuestionProps) {
-  const { currentQuestion, submitAnswer, gameState, nextQuestion } = useGame();
+export function Question({ showDebugInfo = false, onShowCorrectAnswer }: QuestionProps) {
+  const { currentQuestion, submitAnswer, gameState, nextQuestion, checkAllPlayersAnswered } = useGame();
   const [searchParams] = useSearchParams();
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [hasAnswered, setHasAnswered] = useState(false);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [showAnswer, setShowAnswer] = useState(false);
+  const [showCorrectAnswerState, setShowCorrectAnswerState] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   
   const gameId = searchParams.get('gameId');
@@ -32,12 +35,13 @@ export function Question({ showCorrectAnswer = false }: QuestionProps) {
     setHasAnswered(false);
     setSelectedOption(null);
     setShowAnswer(false);
+    setShowCorrectAnswerState(false);
     setIsTransitioning(false);
   }, [currentQuestion?.id]);
 
   useEffect(() => {
     // Handle showing correct answer and transitioning to next question
-    if (showAnswer || showCorrectAnswer) {
+    if (showAnswer || showCorrectAnswerState) {
       const transitionTimer = setTimeout(() => {
         setIsTransitioning(true);
         // Wait for transition animation before moving to next question
@@ -48,7 +52,7 @@ export function Question({ showCorrectAnswer = false }: QuestionProps) {
 
       return () => clearTimeout(transitionTimer);
     }
-  }, [showAnswer, showCorrectAnswer, nextQuestion]);
+  }, [showAnswer, showCorrectAnswerState, nextQuestion]);
 
   useEffect(() => {
     // Log debug information
@@ -58,6 +62,14 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
     
     setDebugInfo(info);
   }, [gameId, playerId, currentQuestion, gameState]);
+
+  // Check if all players have answered
+  useEffect(() => {
+    if (gameState.session?.allPlayersAnswered) {
+      setShowCorrectAnswerState(true);
+      onShowCorrectAnswer?.();
+    }
+  }, [gameState.session?.allPlayersAnswered, onShowCorrectAnswer]);
 
   if (gameState.isLoading) {
     return (
@@ -109,8 +121,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   }
 
   const handleAnswer = async (answer: string) => {
-    if (!gameState.session || hasAnswered || showCorrectAnswer) return;
-    
+    if (hasAnswered) return;
     setHasAnswered(true);
     setSelectedOption(answer);
     await submitAnswer(answer);
@@ -121,7 +132,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
     const baseClass = `p-4 rounded-lg text-white text-lg md:text-xl font-bold ${optionColors[optionKey as keyof typeof optionColors]}`;
     
     // When showing correct answer, highlight the correct one
-    if (showCorrectAnswer || showAnswer) {
+    if (showCorrectAnswerState || showAnswer) {
       const correctOptionKey = String.fromCharCode(65 + currentQuestion.correctOptionIndex);
       
       if (optionKey === correctOptionKey) {
@@ -169,22 +180,25 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           <div className="mb-6">
             <Timer
               duration={30}
-              onComplete={() => setShowAnswer(true)}
-              isActive={gameState.session?.status === 'playing' && !gameState.session?.isPaused && !showCorrectAnswer && !showAnswer}
-              skipTimer={gameState.session?.allPlayersAnswered}
+              onComplete={() => {
+                setShowCorrectAnswerState(true);
+                onShowCorrectAnswer?.();
+              }}
+              isActive={!showCorrectAnswerState && !isTransitioning && !gameState.session?.allPlayersAnswered}
+              skipTimer={gameState.session?.allPlayersAnswered || false}
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {currentQuestion.options.map((option, index) => {
               const optionKey = String.fromCharCode(65 + index);
-              const isCorrectAnswer = (showCorrectAnswer || showAnswer) && optionKey === String.fromCharCode(65 + currentQuestion.correctOptionIndex);
+              const isCorrectAnswer = (showCorrectAnswerState || showAnswer) && optionKey === String.fromCharCode(65 + currentQuestion.correctOptionIndex);
               
               return (
                 <motion.button
                   key={optionKey}
-                  whileHover={!hasAnswered && !showCorrectAnswer && !showAnswer ? { scale: 1.05 } : {}}
-                  whileTap={!hasAnswered && !showCorrectAnswer && !showAnswer ? { scale: 0.95 } : {}}
+                  whileHover={!hasAnswered && !showCorrectAnswerState && !showAnswer ? { scale: 1.05 } : {}}
+                  whileTap={!hasAnswered && !showCorrectAnswerState && !showAnswer ? { scale: 0.95 } : {}}
                   animate={isCorrectAnswer ? {
                     scale: [1, 1.1, 1.05],
                     transition: {
@@ -194,7 +208,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
                     }
                   } : {}}
                   onClick={() => handleAnswer(optionKey)}
-                  disabled={hasAnswered || showCorrectAnswer || showAnswer}
+                  disabled={hasAnswered || showCorrectAnswerState || showAnswer}
                   className={getButtonClass(optionKey)}
                 >
                   {optionKey}: {option}
@@ -203,7 +217,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
             })}
           </div>
 
-          {(showCorrectAnswer || showAnswer) && (
+          {(showCorrectAnswerState || showAnswer) && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
