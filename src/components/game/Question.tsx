@@ -10,7 +10,11 @@ const optionColors = {
   D: 'bg-green-500'
 };
 
-export function Question() {
+interface QuestionProps {
+  showingCorrectAnswer?: boolean;
+}
+
+export function Question({ showingCorrectAnswer = false }: QuestionProps) {
   const { currentQuestion, submitAnswer, gameState } = useGame();
   const [searchParams] = useSearchParams();
   const [debugInfo, setDebugInfo] = useState<string>('');
@@ -85,7 +89,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   }
 
   const handleAnswer = async (answer: string) => {
-    if (!gameState.session || hasAnswered || gameState.session.showingCorrectAnswer) return;
+    if (!gameState.session || hasAnswered || showingCorrectAnswer) return;
     
     setHasAnswered(true);
     setSelectedOption(answer);
@@ -97,11 +101,11 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
     const baseClass = `p-4 rounded-lg text-white text-lg md:text-xl font-bold ${optionColors[optionKey as keyof typeof optionColors]}`;
     
     // When showing correct answer, highlight the correct one
-    if (gameState.session?.showingCorrectAnswer) {
+    if (showingCorrectAnswer) {
       const correctOptionKey = String.fromCharCode(65 + currentQuestion.correctOptionIndex);
       
       if (optionKey === correctOptionKey) {
-        return `${baseClass} ring-4 ring-green-300 bg-opacity-100`;
+        return `${baseClass} ring-4 ring-green-300 bg-opacity-100 shadow-lg transform scale-105`;
       } else if (optionKey === selectedOption) {
         return `${baseClass} opacity-50 bg-opacity-50`;
       } else {
@@ -130,7 +134,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
         
         <div className="mb-6 text-center">
           <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-            {gameState.session?.categories?.[gameState.session.currentCategory] || 'Category'} • Question {(gameState.session?.currentQuestionIndex || 0) + 1}/8
+            {gameState.session?.categories?.[gameState.session.currentCategory] || 'Kategorija'} • Pitanje {(gameState.session?.currentQuestionIndex || 0) + 1}/8
           </span>
         </div>
 
@@ -140,10 +144,10 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
             return (
               <motion.button
                 key={optionKey}
-                whileHover={!hasAnswered && !(gameState.session?.showingCorrectAnswer) ? { scale: 1.05 } : {}}
-                whileTap={!hasAnswered && !(gameState.session?.showingCorrectAnswer) ? { scale: 0.95 } : {}}
+                whileHover={!hasAnswered && !showingCorrectAnswer ? { scale: 1.05 } : {}}
+                whileTap={!hasAnswered && !showingCorrectAnswer ? { scale: 0.95 } : {}}
                 onClick={() => handleAnswer(optionKey)}
-                disabled={hasAnswered || !!gameState.session?.showingCorrectAnswer}
+                disabled={hasAnswered || showingCorrectAnswer}
                 className={getButtonClass(optionKey)}
               >
                 {optionKey}: {option}
@@ -152,14 +156,14 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           })}
         </div>
 
-        {gameState.session?.showingCorrectAnswer && (
+        {showingCorrectAnswer && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             className="mt-8 text-center"
           >
             <p className="text-xl">
-              Correct answer: {String.fromCharCode(65 + currentQuestion.correctOptionIndex)}
+              Tačan odgovor: {String.fromCharCode(65 + currentQuestion.correctOptionIndex)}
             </p>
           </motion.div>
         )}

@@ -10,17 +10,18 @@ import { rtdb } from '../../lib/firebase/firebase';
 export function ProjectorView() {
   const { gameState, teams, currentQuestion, nextQuestion, checkAllPlayersAnswered } = useGame();
   const [leaderboardTimer, setLeaderboardTimer] = useState<number | null>(null);
+  const [showingAnswer, setShowingAnswer] = useState(false);
   
   // This effect checks if all players have answered to potentially skip the timer
   useEffect(() => {
     const intervalId = setInterval(() => {
-      if (gameState.session?.status === 'playing' && !gameState.session.showingCorrectAnswer) {
+      if (gameState.session?.status === 'playing' && !showingAnswer) {
         checkAllPlayersAnswered();
       }
     }, 1000);
     
     return () => clearInterval(intervalId);
-  }, [checkAllPlayersAnswered, gameState.session?.status, gameState.session?.showingCorrectAnswer]);
+  }, [checkAllPlayersAnswered, gameState.session?.status, showingAnswer]);
   
   // This effect manages the leaderboard timer between rounds
   useEffect(() => {
@@ -47,15 +48,17 @@ export function ProjectorView() {
   }, [gameState.session?.showLeaderboard, nextQuestion, leaderboardTimer]);
 
   const handleTimerComplete = () => {
-    if (gameState.session?.status === 'playing' && !gameState.session.showingCorrectAnswer) {
-      // Show correct answer
-      updateGameShowingCorrectAnswer(true);
-      
-      // Wait 3 seconds then move to next question
-      setTimeout(() => {
-        nextQuestion();
-      }, 3000);
-    }
+    if (!gameState.session || gameState.session.status !== 'playing' || showingAnswer) return;
+    
+    // Show correct answer
+    setShowingAnswer(true);
+    updateGameShowingCorrectAnswer(true);
+    
+    // Wait 3 seconds then move to next question
+    setTimeout(() => {
+      setShowingAnswer(false);
+      nextQuestion();
+    }, 3000);
   };
   
   const updateGameShowingCorrectAnswer = (showing: boolean) => {
@@ -81,9 +84,9 @@ export function ProjectorView() {
             Leaderboard
           </h2>
           <p className="text-center text-xl mb-8">
-            Round {gameState.session.currentRound} completed!
+            Runda {gameState.session.currentRound + 1} završena!
             <br />
-            Next category in {leaderboardTimer} seconds...
+            Sledeća kategorija za {leaderboardTimer} sekundi...
           </p>
           <div className="grid grid-cols-1 gap-4">
             {teams.sort((a, b) => b.score - a.score).map((team, index) => (
@@ -115,12 +118,12 @@ export function ProjectorView() {
           className="bg-white rounded-lg shadow-lg p-8"
         >
           <h2 className="text-4xl font-bold text-center mb-4">
-            Game Over!
+            Igra završena!
           </h2>
           <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-blue-600 mb-2">Winner</h3>
-            <p className="text-4xl">{winner?.name || 'No winner'}</p>
-            <p className="text-2xl text-gray-600">{winner?.score || 0} points</p>
+            <h3 className="text-3xl font-bold text-blue-600 mb-2">Pobednik</h3>
+            <p className="text-4xl">{winner?.name || 'Nema pobednika'}</p>
+            <p className="text-2xl text-gray-600">{winner?.score || 0} poena</p>
           </div>
           <div className="grid grid-cols-1 gap-4">
             {teams.sort((a, b) => b.score - a.score).map((team, index) => (
@@ -135,13 +138,15 @@ export function ProjectorView() {
       <>
         {currentQuestion && (
           <>
-            <Timer
-              duration={30}
-              onComplete={handleTimerComplete}
-              isActive={gameState.session.status === 'playing' && !gameState.session.isPaused}
-              skipTimer={gameState.session.allPlayersAnswered}
-            />
-            <Question />
+            <div className="mb-6">
+              <Timer
+                duration={30}
+                onComplete={handleTimerComplete}
+                isActive={gameState.session.status === 'playing' && !gameState.session.isPaused}
+                skipTimer={gameState.session.allPlayersAnswered}
+              />
+            </div>
+            <Question showingCorrectAnswer={showingAnswer} />
           </>
         )}
       </>
@@ -175,7 +180,7 @@ export function ProjectorView() {
                 ))}
               
               {teams.length === 0 && (
-                <p className="text-gray-500 text-center">No teams yet</p>
+                <p className="text-gray-500 text-center">Nema igrača još</p>
               )}
             </div>
           </div>
