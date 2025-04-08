@@ -46,17 +46,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
         }));
 
         // Load current question from the game's questions array
-        if (gameData.questions && gameData.questions.length > 0 && gameData.currentQuestionIndex >= 0) {
-          const currentQ = gameData.questions[gameData.currentQuestionIndex];
-          if (currentQ) {
+        if (gameData.questions && gameData.currentCategory >= 0 && gameData.currentQuestionIndex >= 0) {
+          // Get questions for current category
+          const categoryQuestions = gameData.questions[gameData.currentCategory];
+          
+          if (categoryQuestions && categoryQuestions.length > gameData.currentQuestionIndex) {
+            const currentQ = categoryQuestions[gameData.currentQuestionIndex];
             console.log('Current question:', currentQ);
             setCurrentQuestion(currentQ);
           } else {
-            console.log('No question found at index', gameData.currentQuestionIndex);
+            console.log('No question found at index', gameData.currentQuestionIndex, 'in category', gameData.currentCategory);
             setCurrentQuestion(null);
           }
         } else {
-          console.log('No questions available in game data');
+          console.log('No questions available in game data or invalid indices');
           setCurrentQuestion(null);
         }
       } else {
