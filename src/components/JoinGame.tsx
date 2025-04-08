@@ -103,10 +103,10 @@ export function JoinGame() {
       // Check if player name is already taken
       const playersRef = ref(rtdb, `games/${gameId}/players`);
       const playersSnapshot = await get(playersRef);
-      const existingPlayers = playersSnapshot.val() || {};
+      const existingPlayers = playersSnapshot.val() as Record<string, Player> || {};
       
       // Check if any existing player has the same name
-      const isNameTaken = Object.values(existingPlayers).some((player: any) => 
+      const isNameTaken = Object.values(existingPlayers).some((player) => 
         player.name.toLowerCase() === playerName.toLowerCase()
       );
       
