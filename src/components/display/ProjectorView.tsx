@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useGame } from '../../context/GameContext';
 import { Question } from '../game/Question';
 import { Timer } from '../game/Timer';
@@ -11,129 +11,111 @@ export function ProjectorView() {
   const { gameState, teams, currentQuestion, nextQuestion, checkAllPlayersAnswered } = useGame();
   const [leaderboardTimer, setLeaderboardTimer] = useState<number | null>(null);
   const [showingCorrectAnswer, setShowingCorrectAnswer] = useState(false);
-  const [timerKey, setTimerKey] = useState(0); // Add key to force timer remount
-  
-  // Debug - log game state to see what's happening
+  const [timerKey, setTimerKey] = useState(0);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+
+  // Reset states when question changes
   useEffect(() => {
-    console.log("Current game state:", gameState);
-    console.log("Current question:", currentQuestion);
-  }, [gameState, currentQuestion]);
-  
-  // Reset timer key when question changes
-  useEffect(() => {
+    setShowingCorrectAnswer(false);
+    setIsTransitioning(false);
     setTimerKey(prev => prev + 1);
   }, [currentQuestion?.id]);
-  
-  // This effect checks if all players have answered to potentially skip the timer
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
-        checkAllPlayersAnswered();
-      }
-    }, 500); // Check more frequently
-    
-    return () => clearInterval(intervalId);
-  }, [checkAllPlayersAnswered, gameState.session?.status, showingCorrectAnswer]);
-  
-  // This effect manages showing correct answer timing
-  useEffect(() => {
-    let timerId: NodeJS.Timeout;
-    
-    // If game state indicates all players answered or we're showing correct answer
-    if (gameState.session?.showingCorrectAnswer || gameState.session?.allPlayersAnswered) {
-      if (!showingCorrectAnswer) {
-        console.log("Setting showingCorrectAnswer to true");
-        setShowingCorrectAnswer(true);
-      }
-      
-      // If we're showing the correct answer, wait 5 seconds then go to next question
-      console.log("Starting 5 second timer for next question");
-      timerId = setTimeout(() => {
-        console.log("5 seconds elapsed, moving to next question");
-        setShowingCorrectAnswer(false);
-        nextQuestion();
-      }, 5000);
-    } else if (showingCorrectAnswer && !gameState.session?.showingCorrectAnswer) {
-      // If we were showing but game state changed, reset our local state
-      console.log("Resetting showingCorrectAnswer to false");
-      setShowingCorrectAnswer(false);
+
+  // Handle timer completion and question transitions
+  const handleTimerComplete = useCallback(() => {
+    if (!gameState.session?.status === 'playing' || showingCorrectAnswer || isTransitioning) {
+      return;
     }
-    
-    return () => {
-      if (timerId) {
-        console.log("Clearing next question timer");
-        clearTimeout(timerId);
-      }
-    };
-  }, [nextQuestion, showingCorrectAnswer, gameState.session?.showingCorrectAnswer, gameState.session?.allPlayersAnswered]);
-  
-  // This effect manages the leaderboard timer between rounds
+
+    setShowingCorrectAnswer(true);
+    setIsTransitioning(true);
+
+    // Update game state in Firebase
+    const gameRef = ref(rtdb, `games/${gameState.session?.id}`);
+    update(gameRef, {
+      showingCorrectAnswer: true,
+      allPlayersAnswered: true
+    });
+
+    // Wait 3 seconds before moving to next question
+    setTimeout(() => {
+      setShowingCorrectAnswer(false);
+      nextQuestion();
+      setIsTransitioning(false);
+    }, 3000);
+  }, [gameState.session?.id, gameState.session?.status, showingCorrectAnswer, isTransitioning, nextQuestion]);
+
+  // Handle leaderboard display between rounds
   useEffect(() => {
-    if (gameState.session?.showLeaderboard && leaderboardTimer === null) {
+    if (gameState.session?.showLeaderboard && !leaderboardTimer) {
       setLeaderboardTimer(10);
-      
-      const timerId = setInterval(() => {
-        setLeaderboardTimer((prev) => {
-          if (prev === null || prev <= 1) {
-            clearInterval(timerId);
-            nextQuestion(); // Move to next category/round
+
+      const timer = setInterval(() => {
+        setLeaderboardTimer(prev => {
+          if (!prev || prev <= 1) {
+            clearInterval(timer);
+            nextQuestion();
             return null;
           }
           return prev - 1;
         });
       }, 1000);
-      
-      return () => clearInterval(timerId);
+
+      return () => clearInterval(timer);
     }
-    
+
     if (!gameState.session?.showLeaderboard) {
       setLeaderboardTimer(null);
     }
-  }, [gameState.session?.showLeaderboard, nextQuestion, leaderboardTimer]);
+  }, [gameState.session?.showLeaderboard, leaderboardTimer, nextQuestion]);
 
-  const handleTimerComplete = () => {
-    if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
-      setShowingCorrectAnswer(true);
-      updateGameShowingCorrectAnswer(true);
-      
-      // Automatically move to next question after 3 seconds
-      setTimeout(() => {
-        setShowingCorrectAnswer(false);
-        nextQuestion();
-      }, 3000);
-    }
+  // Render game content based on state
+  const renderGameContent = () => {
+    if (!currentQuestion) return null;
+
+    return (
+      <>
+        <div className="mb-4">
+          <Timer
+            key={timerKey}
+            duration={15}
+            onComplete={handleTimerComplete}
+            isActive={
+              gameState.session?.status === 'playing' &&
+              !showingCorrectAnswer &&
+              !isTransitioning &&
+              !gameState.session?.isPaused
+            }
+          />
+        </div>
+        <Question
+          showCorrectAnswer={showingCorrectAnswer}
+          showDebugInfo={false}
+        />
+      </>
+    );
   };
-  
-  const updateGameShowingCorrectAnswer = (showing: boolean) => {
-    if (!gameState.session) return;
-    
-    const gameRef = ref(rtdb, `games/${gameState.session.id}`);
-    update(gameRef, {
-      showingCorrectAnswer: showing,
-      allPlayersAnswered: true
-    });
-  };
-  
-  const renderMainContent = () => {
-    if (!gameState.session) return null;
-    
-    if (gameState.session.showLeaderboard) {
-      return (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-lg shadow-lg p-8"
-        >
-          <h2 className="text-4xl font-bold text-center mb-4">
-            Leaderboard
-          </h2>
-          <p className="text-center text-xl mb-8">
-            Round {gameState.session.currentRound + 1} completed!
-            <br />
-            Next category in {leaderboardTimer} seconds...
-          </p>
-          <div className="grid grid-cols-1 gap-4">
-            {teams.sort((a, b) => b.score - a.score).map((team, index) => (
+
+  // Render leaderboard content
+  const renderLeaderboardContent = () => {
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-lg shadow-lg p-8"
+      >
+        <h2 className="text-4xl font-bold text-center mb-4">
+          Leaderboard
+        </h2>
+        <p className="text-center text-xl mb-8">
+          Round {gameState.session?.currentRound ?? 0 + 1} completed!
+          <br />
+          Next category in {leaderboardTimer} seconds...
+        </p>
+        <div className="grid grid-cols-1 gap-4">
+          {teams
+            .sort((a, b) => b.score - a.score)
+            .map((team, index) => (
               <motion.div
                 key={team.id}
                 initial={{ opacity: 0, x: -20 }}
@@ -147,84 +129,73 @@ export function ProjectorView() {
                 <TeamCard team={team} isActive={index < 3} />
               </motion.div>
             ))}
-          </div>
-        </motion.div>
-      );
-    }
-    
-    if (gameState.session.status === 'finished') {
-      const winner = [...teams].sort((a, b) => b.score - a.score)[0];
-      
-      return (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-lg shadow-lg p-8"
-        >
-          <h2 className="text-4xl font-bold text-center mb-4">
-            Game Over!
-          </h2>
-          <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-blue-600 mb-2">Winner</h3>
-            <p className="text-4xl">{winner?.name || 'No winner'}</p>
-            <p className="text-2xl text-gray-600">{winner?.score || 0} points</p>
-          </div>
-          <div className="grid grid-cols-1 gap-4">
-            {teams.sort((a, b) => b.score - a.score).map((team, index) => (
-              <TeamCard key={team.id} team={team} isActive={index === 0} />
-            ))}
-          </div>
-        </motion.div>
-      );
-    }
-    
-    return (
-      <>
-        {currentQuestion && (
-          <>
-            <div className="mb-4">
-              <Timer
-                key={timerKey}
-                duration={15}
-                onComplete={handleTimerComplete}
-                isActive={!gameState.session?.isPaused && !showingCorrectAnswer}
-              />
-            </div>
-            <Question showCorrectAnswer={showingCorrectAnswer} />
-          </>
-        )}
-      </>
+        </div>
+      </motion.div>
     );
   };
 
+  // Render game over content
+  const renderGameOverContent = () => {
+    const winner = [...teams].sort((a, b) => b.score - a.score)[0];
+
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white rounded-lg shadow-lg p-8"
+      >
+        <h2 className="text-4xl font-bold text-center mb-4">
+          Game Over!
+        </h2>
+        <div className="text-center mb-8">
+          <h3 className="text-3xl font-bold text-blue-600 mb-2">Winner</h3>
+          <p className="text-4xl">{winner?.name || 'No winner'}</p>
+          <p className="text-2xl text-gray-600">{winner?.score || 0} points</p>
+        </div>
+        <div className="grid grid-cols-1 gap-4">
+          {teams
+            .sort((a, b) => b.score - a.score)
+            .map((team, index) => (
+              <TeamCard key={team.id} team={team} isActive={index === 0} />
+            ))}
+        </div>
+      </motion.div>
+    );
+  };
+
+  // Main render
   return (
     <div className="min-h-screen bg-gray-100 p-8">
       <div className="max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="md:col-span-2">
-            {renderMainContent()}
+            {!gameState.session ? null : 
+              gameState.session.showLeaderboard ? renderLeaderboardContent() :
+              gameState.session.status === 'finished' ? renderGameOverContent() :
+              renderGameContent()
+            }
           </div>
 
-          {/* Leaderboard */}
+          {/* Side Leaderboard */}
           <div className="bg-white rounded-lg shadow-lg p-6">
             <h2 className="text-2xl font-bold mb-4">Leaderboard</h2>
             <div className="space-y-4">
-              {teams
-                .sort((a, b) => b.score - a.score)
-                .map((team, index) => (
-                  <motion.div
-                    key={team.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <TeamCard team={team} isActive={index === 0} />
-                  </motion.div>
-                ))}
-              
-              {teams.length === 0 && (
+              {teams.length === 0 ? (
                 <p className="text-gray-500 text-center">No teams yet</p>
+              ) : (
+                teams
+                  .sort((a, b) => b.score - a.score)
+                  .map((team, index) => (
+                    <motion.div
+                      key={team.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                    >
+                      <TeamCard team={team} isActive={index === 0} />
+                    </motion.div>
+                  ))
               )}
             </div>
           </div>
@@ -232,4 +203,4 @@ export function ProjectorView() {
       </div>
     </div>
   );
-} 
+}

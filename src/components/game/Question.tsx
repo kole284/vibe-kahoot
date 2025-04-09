@@ -172,10 +172,8 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           <div className="mb-6">
             <Timer
               duration={15}
-              onComplete={() => {
-                onShowCorrectAnswer?.();
-              }}
-              isActive={!showCorrectAnswer && !isTransitioning}
+              onComplete={() => onShowCorrectAnswer?.()}
+              isActive={!showCorrectAnswer && !isTransitioning && !gameState.session?.isPaused}
             />
           </div>
 

@@ -1,49 +1,66 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 
 interface TimerProps {
   duration: number;
   onComplete: () => void;
   isActive: boolean;
-  skipTimer?: boolean;
 }
 
-export function Timer({ duration, onComplete, isActive, skipTimer = false }: TimerProps) {
+export function Timer({ duration, onComplete, isActive }: TimerProps) {
   const [timeLeft, setTimeLeft] = useState(duration);
-  
-  // Reset timer when duration changes or when isActive changes
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number | null>(null);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  // Reset timer when duration changes or component mounts
   useEffect(() => {
     setTimeLeft(duration);
-  }, [duration, isActive]);
+    startTimeRef.current = null;
+    clearTimer();
+  }, [duration, clearTimer]);
 
   // Main timer effect
   useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-
     if (!isActive || timeLeft <= 0) {
+      clearTimer();
+      startTimeRef.current = null;
       return;
     }
 
-    timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        const newValue = prev - 1;
-        if (newValue <= 0) {
-          if (timer) clearInterval(timer);
+    // Start new timer
+    if (!timerRef.current) {
+      startTimeRef.current = Date.now();
+      
+      timerRef.current = setInterval(() => {
+        const now = Date.now();
+        const elapsed = startTimeRef.current ? Math.floor((now - startTimeRef.current) / 1000) : 0;
+        const newTimeLeft = Math.max(0, duration - elapsed);
+
+        if (newTimeLeft <= 0) {
+          clearTimer();
+          setTimeLeft(0);
           onComplete();
-          return 0;
+        } else {
+          setTimeLeft(newTimeLeft);
         }
-        return newValue;
-      });
-    }, 1000);
+      }, 100); // Update more frequently for smoother countdown
+    }
 
+    // Cleanup
     return () => {
-      if (timer) {
-        clearInterval(timer);
-      }
+      clearTimer();
     };
-  }, [isActive, timeLeft, onComplete]);
+  }, [isActive, duration, onComplete, clearTimer]);
 
-  const progress = (timeLeft / duration) * 100;
+  // Calculate progress percentage
+  const progress = Math.max(0, Math.min(100, (timeLeft / duration) * 100));
 
   return (
     <div className="w-full max-w-md mx-auto">
@@ -51,7 +68,7 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
         <motion.div
           initial={{ width: '100%' }}
           animate={{ width: `${progress}%` }}
-          transition={{ duration: 0.5, ease: 'linear' }}
+          transition={{ duration: 0.1, ease: 'linear' }}
           className={`absolute top-0 left-0 h-full ${
             timeLeft > duration / 2
               ? 'bg-green-500'
@@ -61,7 +78,9 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
           }`}
         />
         <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center">
-          <span className="text-white font-bold">{timeLeft}s</span>
+          <span className="text-white font-bold text-lg">
+            {Math.ceil(timeLeft)}s
+          </span>
         </div>
       </div>
     </div>
