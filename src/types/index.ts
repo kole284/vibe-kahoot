@@ -98,11 +98,11 @@ export interface GameSession {
   id: string;
   hostId: string;
   status: 'waiting' | 'playing' | 'finished';
-  players: Player[];
+  players: Record<string, Player>;
   currentQuestionIndex: number;
   currentRound: number;
   currentCategory: number;
-  questions: Question[][];  // Array of arrays, first dimension is category, second is questions
+  questions: Question[][];
   categories: string[];
   showLeaderboard: boolean;
   isPaused: boolean;

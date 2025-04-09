@@ -11,6 +11,7 @@ export function ProjectorView() {
   const { gameState, teams, currentQuestion, nextQuestion, checkAllPlayersAnswered } = useGame();
   const [leaderboardTimer, setLeaderboardTimer] = useState<number | null>(null);
   const [showingCorrectAnswer, setShowingCorrectAnswer] = useState(false);
+  const [timerKey, setTimerKey] = useState(0); // Add key to force timer remount
   
   // Debug - log game state to see what's happening
   useEffect(() => {
@@ -18,39 +19,52 @@ export function ProjectorView() {
     console.log("Current question:", currentQuestion);
   }, [gameState, currentQuestion]);
   
+  // Reset timer key when question changes
+  useEffect(() => {
+    setTimerKey(prev => prev + 1);
+  }, [currentQuestion?.id]);
+  
   // This effect checks if all players have answered to potentially skip the timer
   useEffect(() => {
     const intervalId = setInterval(() => {
       if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
         checkAllPlayersAnswered();
       }
-    }, 1000);
+    }, 500); // Check more frequently
     
     return () => clearInterval(intervalId);
   }, [checkAllPlayersAnswered, gameState.session?.status, showingCorrectAnswer]);
   
   // This effect manages showing correct answer timing
   useEffect(() => {
+    let timerId: NodeJS.Timeout;
+    
     // If game state indicates all players answered or we're showing correct answer
     if (gameState.session?.showingCorrectAnswer || gameState.session?.allPlayersAnswered) {
       if (!showingCorrectAnswer) {
-        // If we haven't set our local state yet, set it
+        console.log("Setting showingCorrectAnswer to true");
         setShowingCorrectAnswer(true);
       }
       
       // If we're showing the correct answer, wait 5 seconds then go to next question
-      console.log("Showing correct answer, will auto-advance in 5 seconds");
-      const timerId = setTimeout(() => {
+      console.log("Starting 5 second timer for next question");
+      timerId = setTimeout(() => {
         console.log("5 seconds elapsed, moving to next question");
         setShowingCorrectAnswer(false);
         nextQuestion();
       }, 5000);
-      
-      return () => clearTimeout(timerId);
     } else if (showingCorrectAnswer && !gameState.session?.showingCorrectAnswer) {
       // If we were showing but game state changed, reset our local state
+      console.log("Resetting showingCorrectAnswer to false");
       setShowingCorrectAnswer(false);
     }
+    
+    return () => {
+      if (timerId) {
+        console.log("Clearing next question timer");
+        clearTimeout(timerId);
+      }
+    };
   }, [nextQuestion, showingCorrectAnswer, gameState.session?.showingCorrectAnswer, gameState.session?.allPlayersAnswered]);
   
   // This effect manages the leaderboard timer between rounds
@@ -79,8 +93,7 @@ export function ProjectorView() {
 
   const handleTimerComplete = () => {
     if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
-      // Show correct answer
-      console.log("Timer completed, showing correct answer");
+      console.log("Timer completed naturally, showing correct answer");
       setShowingCorrectAnswer(true);
       updateGameShowingCorrectAnswer(true);
     }
@@ -89,11 +102,15 @@ export function ProjectorView() {
   const updateGameShowingCorrectAnswer = (showing: boolean) => {
     if (!gameState.session) return;
     
-    console.log("Updating game to show correct answer:", showing);
+    console.log("Updating game state - showing correct answer:", showing);
     const gameRef = ref(rtdb, `games/${gameState.session.id}`);
     update(gameRef, {
       showingCorrectAnswer: showing,
-      allPlayersAnswered: true // Also set all players answered
+      allPlayersAnswered: true
+    }).then(() => {
+      console.log("Successfully updated game state");
+    }).catch(error => {
+      console.error("Error updating game state:", error);
     });
   };
   
@@ -167,9 +184,10 @@ export function ProjectorView() {
           <>
             <div className="mb-4">
               <Timer
+                key={timerKey} // Force remount when question changes
                 duration={30}
                 onComplete={handleTimerComplete}
-                isActive={gameState.session.status === 'playing' && !gameState.session.isPaused && !showingCorrectAnswer}
+                isActive={!gameState.session.isPaused && !showingCorrectAnswer}
                 skipTimer={gameState.session.allPlayersAnswered}
               />
             </div>

@@ -11,20 +11,16 @@ interface TimerProps {
 export function Timer({ duration, onComplete, isActive, skipTimer = false }: TimerProps) {
   const [timeLeft, setTimeLeft] = useState(duration);
   
-  // Debug
+  // Reset timer when duration changes or when isActive changes
   useEffect(() => {
-    console.log("Timer component:", { duration, isActive, skipTimer, timeLeft });
-  }, [duration, isActive, skipTimer, timeLeft]);
-
-  // Reset timer when duration changes
-  useEffect(() => {
+    console.log("Timer reset due to duration or isActive change");
     setTimeLeft(duration);
-  }, [duration]);
+  }, [duration, isActive]);
 
   // Handle skip timer condition immediately
   useEffect(() => {
     if (skipTimer) {
-      console.log("Timer skipped because all players answered");
+      console.log("Timer skipped - all players answered");
       setTimeLeft(0);
       onComplete();
     }
@@ -32,19 +28,21 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
 
   // Main timer effect
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+
     // Don't start timer if we're skipping or not active
-    if (skipTimer || !isActive) {
+    if (skipTimer || !isActive || timeLeft <= 0) {
       return;
     }
 
     console.log("Starting timer with", timeLeft, "seconds");
-    const timer = setInterval(() => {
+    timer = setInterval(() => {
       setTimeLeft((prev) => {
         const newValue = prev - 1;
         console.log("Timer tick:", newValue);
         if (newValue <= 0) {
-          clearInterval(timer);
-          console.log("Timer completed");
+          if (timer) clearInterval(timer);
+          console.log("Timer completed naturally");
           onComplete();
           return 0;
         }
@@ -53,10 +51,12 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
     }, 1000);
 
     return () => {
-      console.log("Cleaning up timer");
-      clearInterval(timer);
+      if (timer) {
+        console.log("Cleaning up timer");
+        clearInterval(timer);
+      }
     };
-  }, [isActive, timeLeft, onComplete, skipTimer, duration]);
+  }, [isActive, skipTimer, timeLeft, onComplete]);
 
   const progress = (timeLeft / duration) * 100;
 

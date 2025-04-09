@@ -271,42 +271,53 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Check if all players have answered the current question
-  const checkAllPlayersAnswered = (): void => {
+  const checkAllPlayersAnswered = async (): Promise<void> => {
     if (!gameId || !gameState.session) return;
     
-    // Get all players and the current question ID
-    const players = gameState.session.players;
-    if (!players) return;
-    
-    // Convert players object to array if it's not already
-    const playersArray = Array.isArray(players) 
-      ? players 
-      : Object.values(players) as Player[];
-    
-    // If no players, return
-    if (playersArray.length === 0) return;
-    
-    const currentQuestionId = gameState.session.questions?.[gameState.session.currentCategory]?.[gameState.session.currentQuestionIndex]?.id;
-    if (!currentQuestionId) return;
-    
-    console.log("Checking if all players answered the current question:", currentQuestionId);
-    console.log("Players:", playersArray);
-    
-    // Check if all players have answered this question
-    const allAnswered = playersArray.every((player: Player) => 
-      player.lastAnswer && player.lastAnswer.questionId === currentQuestionId
-    );
-    
-    console.log("All players answered:", allAnswered);
-    
-    // If all players have answered, update the game state
-    if (allAnswered && !gameState.session.allPlayersAnswered) {
-      console.log("Setting allPlayersAnswered to true");
-      const gameRef = ref(rtdb, `games/${gameId}`);
-      update(gameRef, {
-        allPlayersAnswered: true,
-        showingCorrectAnswer: true // Also set showing correct answer
+    try {
+      // Get all players and the current question ID
+      const players = gameState.session.players;
+      if (!players) return;
+      
+      // Get current question ID
+      const currentQuestionId = gameState.session.questions?.[gameState.session.currentCategory]?.[gameState.session.currentQuestionIndex]?.id;
+      if (!currentQuestionId) return;
+      
+      console.log("Checking answers for question:", currentQuestionId);
+      
+      // Convert players object to array and check their answers
+      const playersArray = Object.values(players) as Player[];
+      
+      // If no players, return
+      if (playersArray.length === 0) {
+        console.log("No players in game");
+        return;
+      }
+      
+      console.log("Total players:", playersArray.length);
+      
+      // Check if all players have answered this question
+      const allAnswered = playersArray.every(player => {
+        const hasAnswered = player.lastAnswer && player.lastAnswer.questionId === currentQuestionId;
+        console.log(`Player ${player.id}: ${hasAnswered ? 'has answered' : 'has not answered'}`);
+        return hasAnswered;
       });
+      
+      console.log("All players answered:", allAnswered);
+      
+      // If all players have answered and it's not already set, update the game state
+      if (allAnswered && !gameState.session.allPlayersAnswered) {
+        console.log("Updating game state - all players answered");
+        const gameRef = ref(rtdb, `games/${gameId}`);
+        await update(gameRef, {
+          allPlayersAnswered: true,
+          showingCorrectAnswer: true,
+          timeRemaining: 0
+        });
+        console.log("Game state updated successfully");
+      }
+    } catch (error) {
+      console.error("Error checking player answers:", error);
     }
   };
 
