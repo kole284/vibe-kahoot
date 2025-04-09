@@ -31,7 +31,13 @@ export function ProjectorView() {
   
   // This effect manages showing correct answer timing
   useEffect(() => {
-    if (showingCorrectAnswer) {
+    // If game state indicates all players answered or we're showing correct answer
+    if (gameState.session?.showingCorrectAnswer || gameState.session?.allPlayersAnswered) {
+      if (!showingCorrectAnswer) {
+        // If we haven't set our local state yet, set it
+        setShowingCorrectAnswer(true);
+      }
+      
       // If we're showing the correct answer, wait 5 seconds then go to next question
       console.log("Showing correct answer, will auto-advance in 5 seconds");
       const timerId = setTimeout(() => {
@@ -41,8 +47,11 @@ export function ProjectorView() {
       }, 5000);
       
       return () => clearTimeout(timerId);
+    } else if (showingCorrectAnswer && !gameState.session?.showingCorrectAnswer) {
+      // If we were showing but game state changed, reset our local state
+      setShowingCorrectAnswer(false);
     }
-  }, [nextQuestion, showingCorrectAnswer]);
+  }, [nextQuestion, showingCorrectAnswer, gameState.session?.showingCorrectAnswer, gameState.session?.allPlayersAnswered]);
   
   // This effect manages the leaderboard timer between rounds
   useEffect(() => {
@@ -71,6 +80,7 @@ export function ProjectorView() {
   const handleTimerComplete = () => {
     if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
       // Show correct answer
+      console.log("Timer completed, showing correct answer");
       setShowingCorrectAnswer(true);
       updateGameShowingCorrectAnswer(true);
     }
@@ -79,10 +89,11 @@ export function ProjectorView() {
   const updateGameShowingCorrectAnswer = (showing: boolean) => {
     if (!gameState.session) return;
     
+    console.log("Updating game to show correct answer:", showing);
     const gameRef = ref(rtdb, `games/${gameState.session.id}`);
     update(gameRef, {
       showingCorrectAnswer: showing,
-      allPlayersAnswered: true // Ensure this is set when showing correct answer
+      allPlayersAnswered: true // Also set all players answered
     });
   };
   

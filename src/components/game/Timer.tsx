@@ -16,33 +16,34 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
     console.log("Timer component:", { duration, isActive, skipTimer, timeLeft });
   }, [duration, isActive, skipTimer, timeLeft]);
 
-  // Reset timer when duration or active status changes
+  // Reset timer when duration changes
   useEffect(() => {
     setTimeLeft(duration);
-  }, [duration, isActive]);
+  }, [duration]);
 
+  // Handle skip timer condition immediately
   useEffect(() => {
-    let timer: NodeJS.Timeout | null = null;
-    
-    // Skip timer if all players have answered
     if (skipTimer) {
-      console.log("Skipping timer as all players answered");
+      console.log("Timer skipped because all players answered");
+      setTimeLeft(0);
       onComplete();
-      return;
     }
-    
-    if (!isActive) {
-      console.log("Timer not active");
+  }, [skipTimer, onComplete]);
+
+  // Main timer effect
+  useEffect(() => {
+    // Don't start timer if we're skipping or not active
+    if (skipTimer || !isActive) {
       return;
     }
 
     console.log("Starting timer with", timeLeft, "seconds");
-    timer = setInterval(() => {
+    const timer = setInterval(() => {
       setTimeLeft((prev) => {
         const newValue = prev - 1;
         console.log("Timer tick:", newValue);
         if (newValue <= 0) {
-          if (timer) clearInterval(timer);
+          clearInterval(timer);
           console.log("Timer completed");
           onComplete();
           return 0;
@@ -53,9 +54,9 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
 
     return () => {
       console.log("Cleaning up timer");
-      if (timer) clearInterval(timer);
+      clearInterval(timer);
     };
-  }, [isActive, onComplete, skipTimer, duration]);
+  }, [isActive, timeLeft, onComplete, skipTimer, duration]);
 
   const progress = (timeLeft / duration) * 100;
 

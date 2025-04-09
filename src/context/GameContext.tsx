@@ -276,21 +276,36 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     
     // Get all players and the current question ID
     const players = gameState.session.players;
-    if (!players || players.length === 0) return;
+    if (!players) return;
+    
+    // Convert players object to array if it's not already
+    const playersArray = Array.isArray(players) 
+      ? players 
+      : Object.values(players) as Player[];
+    
+    // If no players, return
+    if (playersArray.length === 0) return;
     
     const currentQuestionId = gameState.session.questions?.[gameState.session.currentCategory]?.[gameState.session.currentQuestionIndex]?.id;
     if (!currentQuestionId) return;
     
+    console.log("Checking if all players answered the current question:", currentQuestionId);
+    console.log("Players:", playersArray);
+    
     // Check if all players have answered this question
-    const allAnswered = players.every(player => 
+    const allAnswered = playersArray.every((player: Player) => 
       player.lastAnswer && player.lastAnswer.questionId === currentQuestionId
     );
     
+    console.log("All players answered:", allAnswered);
+    
     // If all players have answered, update the game state
     if (allAnswered && !gameState.session.allPlayersAnswered) {
+      console.log("Setting allPlayersAnswered to true");
       const gameRef = ref(rtdb, `games/${gameId}`);
       update(gameRef, {
-        allPlayersAnswered: true
+        allPlayersAnswered: true,
+        showingCorrectAnswer: true // Also set showing correct answer
       });
     }
   };
