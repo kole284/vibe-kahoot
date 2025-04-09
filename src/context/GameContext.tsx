@@ -248,18 +248,29 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     console.log(`Moving to next question/state: Category ${nextCategory}, Index ${nextIndex}, Status ${status}, Show Leaderboard ${showLeaderboard}`);
 
-    await update(gameRef, {
+    // Obavezna polja za resetovanje
+    const updates: any = {
       status,
       currentCategory: nextCategory,
       currentQuestionIndex: nextIndex,
       currentRound: nextRound,
-      timeRemaining: status === 'playing' ? 15 : undefined, // Reset timer only if still playing
+      showLeaderboard,
       showingCorrectAnswer: false,
       allPlayersAnswered: false,
-      showLeaderboard,
-      endedAt: endedAt?.toISOString(),
       updatedAt: new Date().toISOString(),
-    });
+    };
+    
+    // Dodaj timeRemaining samo ako je igra aktivna
+    if (status === 'playing' && !showLeaderboard) {
+      updates.timeRemaining = 15; // Reset tajmera
+    }
+    
+    // Dodaj endedAt samo ako je igra završena
+    if (status === 'finished' && endedAt) {
+      updates.endedAt = endedAt.toISOString();
+    }
+    
+    await update(gameRef, updates);
   };
 
   // Check if all players have answered the current question

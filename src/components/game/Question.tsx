@@ -17,7 +17,7 @@ interface QuestionProps {
 }
 
 export function Question({ showDebugInfo = false, showCorrectAnswer = false }: QuestionProps) {
-  const { currentQuestion, submitAnswer, gameState, nextQuestion } = useGame();
+  const { currentQuestion, submitAnswer, gameState } = useGame();
   const [searchParams] = useSearchParams();
   const [debugInfo, setDebugInfo] = useState<string>('');
   const [hasAnswered, setHasAnswered] = useState(false);
@@ -34,20 +34,14 @@ export function Question({ showDebugInfo = false, showCorrectAnswer = false }: Q
     setIsTransitioning(false);
   }, [currentQuestion?.id]);
 
-  // Handle showing correct answer and transitioning to next question
+  // Transition effect when showing correct answer
   useEffect(() => {
-    if (showCorrectAnswer || gameState.session?.allPlayersAnswered) {
-      const transitionTimer = setTimeout(() => {
-        setIsTransitioning(true);
-        // Wait for transition animation before moving to next question
-        setTimeout(() => {
-          nextQuestion();
-        }, 1000);
-      }, 5000); // Show correct answer for 5 seconds
-
-      return () => clearTimeout(transitionTimer);
+    if (showCorrectAnswer) {
+      setIsTransitioning(true);
+    } else {
+      setIsTransitioning(false);
     }
-  }, [showCorrectAnswer, gameState.session?.allPlayersAnswered, nextQuestion]);
+  }, [showCorrectAnswer]);
 
   // Log debug information
   useEffect(() => {
@@ -61,7 +55,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   }, [gameId, playerId, currentQuestion, gameState, showDebugInfo]);
 
   const handleAnswer = async (answer: string) => {
-    if (hasAnswered || showCorrectAnswer || gameState.session?.allPlayersAnswered) return;
+    if (hasAnswered || showCorrectAnswer) return;
     setHasAnswered(true);
     setSelectedOption(answer);
     await submitAnswer(answer);
@@ -74,7 +68,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
     const baseClass = `p-4 rounded-lg text-white text-lg md:text-xl font-bold ${optionColors[optionKey as keyof typeof optionColors]}`;
     
     // When showing correct answer, highlight the correct one
-    if (showCorrectAnswer || gameState.session?.allPlayersAnswered) {
+    if (showCorrectAnswer) {
       const correctOptionKey = String.fromCharCode(65 + currentQuestion.correctOptionIndex);
       
       if (optionKey === correctOptionKey) {
@@ -97,7 +91,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   if (gameState.isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen p-4">
-        <p className="text-xl mb-4">Loading game data...</p>
+        <p className="text-xl mb-4">Učitavanje igre...</p>
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
       </div>
     );
@@ -106,7 +100,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   if (gameState.error) {
     return (
       <div className="flex flex-col items-center justify-center h-screen p-4">
-        <p className="text-xl text-red-500 mb-4">Error: {gameState.error}</p>
+        <p className="text-xl text-red-500 mb-4">Greška: {gameState.error}</p>
         {debugInfo && (
           <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-64 w-full max-w-xl">
             <pre className="whitespace-pre-wrap break-all">{debugInfo}</pre>
@@ -119,7 +113,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   if (!gameState.session) {
     return (
       <div className="flex flex-col items-center justify-center h-screen p-4">
-        <p className="text-xl mb-4">No game session found</p>
+        <p className="text-xl mb-4">Igra nije pronađena</p>
         {debugInfo && (
           <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-64 w-full max-w-xl">
             <pre className="whitespace-pre-wrap break-all">{debugInfo}</pre>
@@ -132,7 +126,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
   if (!currentQuestion) {
     return (
       <div className="flex flex-col items-center justify-center h-screen p-4">
-        <p className="text-xl mb-4">Loading question...</p>
+        <p className="text-xl mb-4">Učitavanje pitanja...</p>
         <div className="animate-pulse bg-gray-200 h-4 w-32 rounded mb-4"></div>
         {debugInfo && (
           <div className="mt-4 p-2 bg-gray-100 rounded text-xs overflow-auto max-h-64 w-full max-w-xl">
@@ -153,10 +147,10 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
       <div className="w-full max-w-2xl p-6 bg-white rounded-lg shadow-lg">
         <motion.div
           animate={{
-            opacity: isTransitioning ? 0 : 1,
-            scale: isTransitioning ? 0.95 : 1
+            opacity: isTransitioning ? 0.8 : 1,
+            scale: isTransitioning ? 0.98 : 1
           }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.3 }}
         >
           <h2 className="text-2xl md:text-3xl font-bold mb-2 text-center">
             {currentQuestion.text}
@@ -164,29 +158,29 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
           
           <div className="mb-6 text-center">
             <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-              {gameState.session?.categories?.[gameState.session.currentCategory] || 'Category'} • Question {(gameState.session?.currentQuestionIndex || 0) + 1}/8
+              {gameState.session?.categories?.[gameState.session.currentCategory] || 'Kategorija'} • Pitanje {(gameState.session?.currentQuestionIndex || 0) + 1}/8
             </span>
           </div>
 
           {/* Player Timer Display */}
           <div className="mb-6">
-            <Timer
-              duration={15} // Assuming fixed duration for display consistency
-              timeLeft={gameState.session?.timeRemaining ?? 15}
+            <Timer 
+              timeLeft={gameState.session?.timeRemaining ?? 15} 
+              duration={15}
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {currentQuestion.options.map((option, index) => {
               const optionKey = String.fromCharCode(65 + index);
-              const isCorrectAnswer = (showCorrectAnswer || gameState.session?.allPlayersAnswered) && 
+              const isCorrectAnswer = showCorrectAnswer && 
                 optionKey === String.fromCharCode(65 + currentQuestion.correctOptionIndex);
               
               return (
                 <motion.button
                   key={optionKey}
-                  whileHover={!hasAnswered && !showCorrectAnswer && !gameState.session?.allPlayersAnswered ? { scale: 1.05 } : {}}
-                  whileTap={!hasAnswered && !showCorrectAnswer && !gameState.session?.allPlayersAnswered ? { scale: 0.95 } : {}}
+                  whileHover={!hasAnswered && !showCorrectAnswer ? { scale: 1.05 } : {}}
+                  whileTap={!hasAnswered && !showCorrectAnswer ? { scale: 0.95 } : {}}
                   animate={isCorrectAnswer ? {
                     scale: [1, 1.1, 1.05],
                     transition: {
@@ -196,7 +190,7 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
                     }
                   } : {}}
                   onClick={() => handleAnswer(optionKey)}
-                  disabled={hasAnswered || showCorrectAnswer || gameState.session?.allPlayersAnswered}
+                  disabled={hasAnswered || showCorrectAnswer}
                   className={getButtonClass(optionKey)}
                 >
                   {optionKey}: {option}
@@ -205,22 +199,22 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
             })}
           </div>
 
-          {(showCorrectAnswer || gameState.session?.allPlayersAnswered) && (
+          {showCorrectAnswer && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="mt-8 text-center"
             >
               <p className="text-xl font-bold text-green-600">
-                Correct answer: {String.fromCharCode(65 + currentQuestion.correctOptionIndex)}
+                Tačan odgovor: {String.fromCharCode(65 + currentQuestion.correctOptionIndex)}
               </p>
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 4 }}
+                transition={{ delay: 1 }}
                 className="text-gray-600 mt-2"
               >
-                Next question in a moment...
+                Sledeće pitanje za nekoliko sekundi...
               </motion.p>
             </motion.div>
           )}
