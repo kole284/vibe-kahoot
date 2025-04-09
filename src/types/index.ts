@@ -99,19 +99,25 @@ export interface GameSession {
   hostId: string;
   status: 'waiting' | 'playing' | 'finished';
   players: Record<string, Player>;
+  questions: Question[][]; // Array of categories, each containing an array of questions
+  categories?: string[]; // Added back categories array
+  currentCategory: number;
   currentQuestionIndex: number;
   currentRound: number;
-  currentCategory: number;
-  questions: Question[][];
-  categories: string[];
-  showLeaderboard: boolean;
-  isPaused: boolean;
-  timeRemaining: number;
   createdAt: Date;
   updatedAt: Date;
-  roundCompleted: boolean;
-  showingCorrectAnswer: boolean;
-  allPlayersAnswered: boolean;
+  startedAt?: Date;
+  endedAt?: Date;
+  isPaused?: boolean;
+  showLeaderboard?: boolean;
+  roundCompleted?: boolean;
+  allPlayersAnswered?: boolean;
+  showingCorrectAnswer?: boolean;
+  timeRemaining?: number; // Added for syncing timer
+  settings: {
+    timeLimit: number; // Time limit per question in seconds
+    maxPlayers: number;
+  };
 }
 
 export interface Player {

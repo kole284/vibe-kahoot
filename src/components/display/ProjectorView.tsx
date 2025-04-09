@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useGame } from '../../context/GameContext';
 import { Question } from '../game/Question';
 import { Timer } from '../game/Timer';
@@ -7,103 +7,154 @@ import { TeamCard } from '../game/TeamCard';
 import { ref, update } from 'firebase/database';
 import { rtdb } from '../../lib/firebase/firebase';
 
+const QUESTION_DURATION = 15;
+const SHOW_ANSWER_DURATION = 3; // Duration in seconds
+
 export function ProjectorView() {
   const { gameState, teams, currentQuestion, nextQuestion, checkAllPlayersAnswered } = useGame();
   const [leaderboardTimer, setLeaderboardTimer] = useState<number | null>(null);
   const [showingCorrectAnswer, setShowingCorrectAnswer] = useState(false);
-  const [timerKey, setTimerKey] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const internalTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Reset states when question changes
+  const gameId = gameState.session?.id;
+  const currentSessionState = gameState.session; // For easier access in useEffect dependencies
+
+  // Reset state when question changes OR when game state indicates it
   useEffect(() => {
-    setShowingCorrectAnswer(false);
-    setIsTransitioning(false);
-    setTimerKey(prev => prev + 1);
-  }, [currentQuestion?.id]);
+    if (currentSessionState && !currentSessionState.showingCorrectAnswer) {
+      setShowingCorrectAnswer(false);
+    }
+    if (currentSessionState?.status !== 'playing' || currentSessionState?.isPaused) {
+      setIsTransitioning(false); // Reset transition if game paused or not playing
+    }
+  }, [currentSessionState]);
 
-  // Handle timer completion and question transitions
-  const handleTimerComplete = useCallback(() => {
-    if (gameState.session?.status !== 'playing' || showingCorrectAnswer || isTransitioning) {
+  // --- Timer Control Logic --- 
+  useEffect(() => {
+    // Clear existing timers on cleanup or state change
+    const cleanupTimers = () => {
+      if (internalTimerRef.current) clearInterval(internalTimerRef.current);
+      if (transitionTimeoutRef.current) clearTimeout(transitionTimeoutRef.current);
+      internalTimerRef.current = null;
+      transitionTimeoutRef.current = null;
+    };
+
+    if (!gameId || !currentSessionState || currentSessionState.status !== 'playing' || 
+        currentSessionState.isPaused || currentSessionState.showingCorrectAnswer || 
+        currentSessionState.allPlayersAnswered) {
+      cleanupTimers(); // Stop timer if game not active, paused, or answer shown/all answered
       return;
     }
-    
-    console.log("Timer completed, starting show answer sequence");
-    setShowingCorrectAnswer(true);
-    setIsTransitioning(true);
 
-    // Update game state in Firebase
-    const gameRef = ref(rtdb, `games/${gameState.session?.id}`);
-    update(gameRef, {
-      showingCorrectAnswer: true,
-      allPlayersAnswered: true
-    });
+    // Start the countdown timer only if it's not already running
+    if (!internalTimerRef.current) {
+      let localTimeLeft = currentSessionState.timeRemaining ?? QUESTION_DURATION;
+      console.log("Starting internal timer with:", localTimeLeft);
+      
+      internalTimerRef.current = setInterval(() => {
+        localTimeLeft -= 1;
+        
+        // Update Firebase timeRemaining
+        const gameRef = ref(rtdb, `games/${gameId}`);
+        update(gameRef, { timeRemaining: localTimeLeft });
 
-    // Wait 3 seconds before moving to next question
-    setTimeout(() => {
-      console.log("3 second delay finished, moving to next question");
-      setShowingCorrectAnswer(false);
-      nextQuestion();
-      setIsTransitioning(false);
-    }, 3000);
-  }, [gameState.session?.id, gameState.session?.status, showingCorrectAnswer, isTransitioning, nextQuestion]);
+        if (localTimeLeft <= 0) {
+          console.log("Internal timer reached 0");
+          cleanupTimers();
+          // Firebase listener will trigger handleShowAnswer sequence via allPlayersAnswered/showingCorrectAnswer update
+        } else {
+          // Optional: Check if all players answered mid-interval
+          // checkAllPlayersAnswered(); // Uncomment if needed, but might be too frequent
+        }
+      }, 1000);
+    }
 
-  // Effect to trigger transition when all players have answered (before timer ends)
+    return cleanupTimers; // Cleanup on unmount or dependency change
+
+  }, [gameId, currentSessionState, checkAllPlayersAnswered]); // Dependencies trigger timer logic re-evaluation
+
+  // --- Show Answer & Transition Logic --- 
   useEffect(() => {
-    if (gameState.session?.allPlayersAnswered && 
-        gameState.session?.status === 'playing' && 
-        !showingCorrectAnswer && 
+    // This effect reacts to Firebase state changes for showing answer/all answered
+    if (gameId && currentSessionState && (currentSessionState.showingCorrectAnswer || currentSessionState.allPlayersAnswered) && 
         !isTransitioning) {
           
-      console.log("All players answered before timer ended. Starting show answer sequence.");
-      handleTimerComplete();
-    }
-  }, [gameState.session?.allPlayersAnswered, gameState.session?.status, showingCorrectAnswer, isTransitioning, handleTimerComplete]);
+      console.log("Detected showCorrectAnswer or allPlayersAnswered=true. Starting transition.", { 
+        showing: currentSessionState.showingCorrectAnswer,
+        allAnswered: currentSessionState.allPlayersAnswered
+      });
+          
+      setIsTransitioning(true);
+      setShowingCorrectAnswer(true); // Ensure local state reflects
 
-  // Handle leaderboard display between rounds
+      // Update Firebase if not already set (e.g., if triggered by allPlayersAnswered)
+      if (!currentSessionState.showingCorrectAnswer) {
+          const gameRef = ref(rtdb, `games/${gameId}`);
+          update(gameRef, { showingCorrectAnswer: true });
+      }
+
+      // Clear any running countdown timer
+      if (internalTimerRef.current) {
+         clearInterval(internalTimerRef.current);
+         internalTimerRef.current = null;
+         console.log("Cleared internal timer due to transition start");
+      }
+
+      // Wait for SHOW_ANSWER_DURATION seconds before moving to next question
+      transitionTimeoutRef.current = setTimeout(() => {
+        console.log("Transition delay finished, calling nextQuestion");
+        setIsTransitioning(false);
+        // nextQuestion() will reset showingCorrectAnswer and allPlayersAnswered in Firebase
+        nextQuestion(); 
+      }, SHOW_ANSWER_DURATION * 1000);
+    }
+
+    // Cleanup timeout if dependencies change or component unmounts
+    return () => {
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current);
+        transitionTimeoutRef.current = null;
+      }
+    };
+
+  }, [gameId, currentSessionState, isTransitioning, nextQuestion]);
+
+  // Handle leaderboard display between rounds (simplified)
   useEffect(() => {
-    if (gameState.session?.showLeaderboard && !leaderboardTimer) {
-      setLeaderboardTimer(10);
-
-      const timer = setInterval(() => {
-        setLeaderboardTimer(prev => {
-          if (!prev || prev <= 1) {
-            clearInterval(timer);
-            nextQuestion();
-            return null;
-          }
-          return prev - 1;
-        });
+    let timer: NodeJS.Timeout | null = null;
+    if (currentSessionState?.showLeaderboard) {
+      let leaderboardTime = 10; // Duration for leaderboard
+      setLeaderboardTimer(leaderboardTime);
+      timer = setInterval(() => {
+        leaderboardTime--;
+        setLeaderboardTimer(leaderboardTime);
+        if (leaderboardTime <= 0) {
+          if(timer) clearInterval(timer);
+          nextQuestion();
+        }
       }, 1000);
-
-      return () => clearInterval(timer);
-    }
-
-    if (!gameState.session?.showLeaderboard) {
+    } else {
       setLeaderboardTimer(null);
     }
-  }, [gameState.session?.showLeaderboard, leaderboardTimer, nextQuestion]);
+    return () => { if (timer) clearInterval(timer); };
+  }, [currentSessionState?.showLeaderboard, nextQuestion]);
 
   // Render game content based on state
   const renderGameContent = () => {
-    if (!currentQuestion) return null;
+    if (!currentQuestion) return <div className="text-center p-8">Loading Question...</div>;
 
     return (
       <>
         <div className="mb-4">
           <Timer
-            key={timerKey}
-            duration={15}
-            onComplete={handleTimerComplete}
-            isActive={
-              gameState.session?.status === 'playing' &&
-              !showingCorrectAnswer &&
-              !isTransitioning &&
-              !gameState.session?.isPaused
-            }
+            duration={QUESTION_DURATION}
+            timeLeft={currentSessionState?.timeRemaining ?? QUESTION_DURATION}
           />
         </div>
         <Question
-          showCorrectAnswer={showingCorrectAnswer}
+          showCorrectAnswer={showingCorrectAnswer || !!currentSessionState?.showingCorrectAnswer}
           showDebugInfo={false}
         />
       </>
@@ -122,7 +173,7 @@ export function ProjectorView() {
           Leaderboard
         </h2>
         <p className="text-center text-xl mb-8">
-          Round {gameState.session?.currentRound ?? 0 + 1} completed!
+          Round {currentSessionState?.currentRound ?? 0 + 1} completed!
           <br />
           Next category in {leaderboardTimer} seconds...
         </p>
@@ -184,9 +235,9 @@ export function ProjectorView() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="md:col-span-2">
-            {!gameState.session ? null : 
-              gameState.session.showLeaderboard ? renderLeaderboardContent() :
-              gameState.session.status === 'finished' ? renderGameOverContent() :
+            {!currentSessionState ? <div className="text-center p-8">Loading Game...</div> : 
+              currentSessionState.showLeaderboard ? renderLeaderboardContent() :
+              currentSessionState.status === 'finished' ? renderGameOverContent() :
               renderGameContent()
             }
           </div>

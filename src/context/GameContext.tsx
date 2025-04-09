@@ -206,8 +206,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       status: 'playing',
       startedAt: new Date().toISOString(),
       isPaused: false,
-      timeRemaining: 30,
-      currentQuestionIndex: 0
+      timeRemaining: 15, // Initialize timeRemaining
+      showingCorrectAnswer: false,
+      allPlayersAnswered: false,
+      currentQuestionIndex: 0,
+      currentCategory: 0 // Assuming starting at first category
     });
   };
 
@@ -219,54 +222,43 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     const currentCategory = gameState.session.currentCategory || 0;
     const currentRound = gameState.session.currentRound || 0;
     const gameRef = ref(rtdb, `games/${gameId}`);
-    
-    // Reset showing correct answer flag
+    let nextCategory = currentCategory;
+    let nextIndex = currentIndex + 1;
+    let showLeaderboard = false;
+    let status = gameState.session.status;
+    let endedAt = gameState.session.endedAt;
+    let nextRound = currentRound;
+
+    // Check if round completed (e.g., after 8 questions)
+    if (nextIndex >= 8) { 
+      showLeaderboard = true;
+      nextRound = currentRound + 1;
+      nextIndex = 0; // Reset index for next round/category
+      nextCategory++; // Move to next category
+      console.log("Round completed. Showing leaderboard. Next category:", nextCategory);
+    }
+
+    // Check if all categories completed
+    if (nextCategory >= (gameState.session.questions?.length || 0)) {
+      status = 'finished';
+      endedAt = new Date();
+      showLeaderboard = false; // Don't show leaderboard on final screen
+      console.log("All categories completed. Finishing game.");
+    }
+
+    console.log(`Moving to next question/state: Category ${nextCategory}, Index ${nextIndex}, Status ${status}, Show Leaderboard ${showLeaderboard}`);
+
     await update(gameRef, {
+      status,
+      currentCategory: nextCategory,
+      currentQuestionIndex: nextIndex,
+      currentRound: nextRound,
+      timeRemaining: status === 'playing' ? 15 : undefined, // Reset timer only if still playing
       showingCorrectAnswer: false,
-      allPlayersAnswered: false
-    });
-    
-    // Check if we've completed all questions in this round
-    if (currentIndex >= 7) { // 0-based index, so 7 means 8 questions
-      // Show leaderboard between rounds
-      await update(gameRef, {
-        showLeaderboard: true,
-        roundCompleted: true,
-        currentRound: currentRound + 1,
-        updatedAt: new Date().toISOString()
-      });
-      return;
-    }
-    
-    // If we're showing the leaderboard and ready for next category
-    if (gameState.session.showLeaderboard) {
-      // Move to next category or end game if all categories are completed
-      if (currentCategory >= 5) { // 0-based index, so 5 means 6 categories
-        // End game after all categories
-        await update(gameRef, {
-          status: 'finished',
-          showLeaderboard: false,
-          endedAt: new Date().toISOString()
-        });
-        return;
-      } else {
-        // Move to next category
-        await update(gameRef, {
-          currentCategory: currentCategory + 1,
-          currentQuestionIndex: 0,
-          showLeaderboard: false,
-          timeRemaining: 30,
-          updatedAt: new Date().toISOString()
-        });
-        return;
-      }
-    }
-    
-    // Otherwise, just move to next question in current round
-    await update(gameRef, {
-      currentQuestionIndex: currentIndex + 1,
-      timeRemaining: 30,
-      updatedAt: new Date().toISOString()
+      allPlayersAnswered: false,
+      showLeaderboard,
+      endedAt: endedAt?.toISOString(),
+      updatedAt: new Date().toISOString(),
     });
   };
 
