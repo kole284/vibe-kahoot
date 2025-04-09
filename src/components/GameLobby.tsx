@@ -106,7 +106,7 @@ export function GameLobby() {
         <div className="mb-6">
           <h2 className="text-lg font-semibold mb-2">Welcome, {player.name}!</h2>
           <p className="text-gray-600">
-            Waiting for the host to start the game. There are currently {game.players?.length || 0} players in the lobby.
+            Waiting for the host to start the game. There are currently {Object.keys(game.players || {}).length} players in the lobby.
           </p>
         </div>
         

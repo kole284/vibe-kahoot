@@ -22,6 +22,8 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
   }, [duration, isActive]);
 
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
+    
     // Skip timer if all players have answered
     if (skipTimer) {
       console.log("Skipping timer as all players answered");
@@ -35,12 +37,12 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
     }
 
     console.log("Starting timer with", timeLeft, "seconds");
-    const timer = setInterval(() => {
+    timer = setInterval(() => {
       setTimeLeft((prev) => {
         const newValue = prev - 1;
         console.log("Timer tick:", newValue);
         if (newValue <= 0) {
-          clearInterval(timer);
+          if (timer) clearInterval(timer);
           console.log("Timer completed");
           onComplete();
           return 0;
@@ -51,9 +53,9 @@ export function Timer({ duration, onComplete, isActive, skipTimer = false }: Tim
 
     return () => {
       console.log("Cleaning up timer");
-      clearInterval(timer);
+      if (timer) clearInterval(timer);
     };
-  }, [isActive, onComplete, skipTimer, timeLeft, duration]);
+  }, [isActive, onComplete, skipTimer, duration]);
 
   const progress = (timeLeft / duration) * 100;
 

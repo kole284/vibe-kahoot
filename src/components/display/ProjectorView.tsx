@@ -32,13 +32,13 @@ export function ProjectorView() {
   // This effect manages showing correct answer timing
   useEffect(() => {
     if (showingCorrectAnswer) {
-      // If we're showing the correct answer, wait 3 seconds then go to next question
-      console.log("Showing correct answer, will auto-advance in 3 seconds");
+      // If we're showing the correct answer, wait 5 seconds then go to next question
+      console.log("Showing correct answer, will auto-advance in 5 seconds");
       const timerId = setTimeout(() => {
-        console.log("3 seconds elapsed, moving to next question");
+        console.log("5 seconds elapsed, moving to next question");
         setShowingCorrectAnswer(false);
         nextQuestion();
-      }, 3000);
+      }, 5000);
       
       return () => clearTimeout(timerId);
     }
@@ -81,7 +81,8 @@ export function ProjectorView() {
     
     const gameRef = ref(rtdb, `games/${gameState.session.id}`);
     update(gameRef, {
-      showingCorrectAnswer: showing
+      showingCorrectAnswer: showing,
+      allPlayersAnswered: true // Ensure this is set when showing correct answer
     });
   };
   
