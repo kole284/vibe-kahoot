@@ -93,24 +93,24 @@ export function ProjectorView() {
 
   const handleTimerComplete = () => {
     if (gameState.session?.status === 'playing' && !showingCorrectAnswer) {
-      console.log("Timer completed naturally, showing correct answer");
       setShowingCorrectAnswer(true);
       updateGameShowingCorrectAnswer(true);
+      
+      // Automatically move to next question after 3 seconds
+      setTimeout(() => {
+        setShowingCorrectAnswer(false);
+        nextQuestion();
+      }, 3000);
     }
   };
   
   const updateGameShowingCorrectAnswer = (showing: boolean) => {
     if (!gameState.session) return;
     
-    console.log("Updating game state - showing correct answer:", showing);
     const gameRef = ref(rtdb, `games/${gameState.session.id}`);
     update(gameRef, {
       showingCorrectAnswer: showing,
       allPlayersAnswered: true
-    }).then(() => {
-      console.log("Successfully updated game state");
-    }).catch(error => {
-      console.error("Error updating game state:", error);
     });
   };
   
@@ -184,11 +184,10 @@ export function ProjectorView() {
           <>
             <div className="mb-4">
               <Timer
-                key={timerKey} // Force remount when question changes
-                duration={30}
+                key={timerKey}
+                duration={15}
                 onComplete={handleTimerComplete}
-                isActive={!gameState.session.isPaused && !showingCorrectAnswer}
-                skipTimer={gameState.session.allPlayersAnswered}
+                isActive={!gameState.session?.isPaused && !showingCorrectAnswer}
               />
             </div>
             <Question showCorrectAnswer={showingCorrectAnswer} />
