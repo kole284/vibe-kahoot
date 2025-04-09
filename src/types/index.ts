@@ -55,7 +55,7 @@ export interface GameContextType {
   submitAnswer: (answer: string) => Promise<void>;
   startGame: () => Promise<void>;
   nextQuestion: () => Promise<void>;
-  checkAllPlayersAnswered: () => void;
+  checkAllPlayersAnswered: (customSessionId?: string) => Promise<boolean>;
 }
 
 export interface User {
@@ -123,12 +123,15 @@ export interface GameSession {
 export interface Player {
   id: string;
   name: string;
+  avatar: string;
   score: number;
-  isReady: boolean;
+  teamId?: string;
+  answers?: Record<string, Answer>;
+  currentAnswer?: string | null;
   lastAnswer?: {
     questionId: string;
-    selectedOptionIndex: number;
-    timeSpent: number;
+    answer: string;
+    timestamp: number;
     isCorrect: boolean;
   };
 }

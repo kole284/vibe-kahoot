@@ -187,8 +187,16 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           selectedOptionIndex: answerIndex,
           timeSpent: 30 - (gameState.session.timeRemaining || 0), // Calculate time spent
           isCorrect: isCorrect
+        },
+        currentAnswer: {
+          questionId: currentQuestion.id,
+          selectedOptionIndex: answerIndex,
+          isCorrect: isCorrect
         }
       });
+      
+      // Check if all players have answered now
+      await checkAllPlayersAnswered();
       
       return;
     } catch (error) {
@@ -248,6 +256,20 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
 
     console.log(`Moving to next question/state: Category ${nextCategory}, Index ${nextIndex}, Status ${status}, Show Leaderboard ${showLeaderboard}`);
 
+    // Reset player currentAnswer fields
+    if (gameState.session.players) {
+      const playerUpdates: Record<string, any> = {};
+      
+      // For each player, reset their currentAnswer
+      Object.keys(gameState.session.players).forEach(playerId => {
+        playerUpdates[`players/${playerId}/currentAnswer`] = null;
+      });
+      
+      // Update all players at once
+      await update(gameRef, playerUpdates);
+      console.log("Reset all player answers for the new question");
+    }
+
     // Obavezna polja za resetovanje
     const updates: any = {
       status,
@@ -274,36 +296,53 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   };
 
   // Check if all players have answered the current question
-  const checkAllPlayersAnswered = async (): Promise<void> => {
-    if (!gameId || !gameState.session) return;
-
+  const checkAllPlayersAnswered = async (customSessionId?: string): Promise<boolean> => {
     try {
-      const players = gameState.session.players;
-      if (!players) return;
+      console.log("Checking if all players answered...");
+      const sessionId = customSessionId || gameState.session?.id;
+      if (!sessionId) {
+        console.error("No session ID found");
+        return false;
+      }
+
+      const gameRef = ref(rtdb, `games/${sessionId}`);
+      const gameSnapshot = await get(gameRef);
       
-      const currentQuestionId = gameState.session.questions?.[gameState.session.currentCategory]?.[gameState.session.currentQuestionIndex]?.id;
-      if (!currentQuestionId) return;
-
-      const playersArray = Object.values(players) as Player[];
-      if (playersArray.length === 0) {
-        return;
+      if (!gameSnapshot.exists()) {
+        console.error("Game not found");
+        return false;
       }
-
-      const allAnswered = playersArray.every(player => 
-        player.lastAnswer && player.lastAnswer.questionId === currentQuestionId
-      );
-
-      // If all players have answered and it's not already reflected in the session state
-      if (allAnswered && !gameState.session.allPlayersAnswered) {
-        console.log("All players have answered. Updating Firebase state.");
-        const gameRef = ref(rtdb, `games/${gameId}`);
+      
+      const game = gameSnapshot.val() as GameSession;
+      
+      if (!game.players || Object.keys(game.players).length === 0) {
+        console.log("No players in the game");
+        return false;
+      }
+      
+      const playerValues = Object.values(game.players);
+      console.log(`Total players: ${playerValues.length}`);
+      
+      const allAnswered = playerValues.every((player: Player) => {
+        const hasAnswered = player.currentAnswer !== undefined && player.currentAnswer !== null;
+        console.log(`Player ${player.name}: answered = ${hasAnswered}`);
+        return hasAnswered;
+      });
+      
+      console.log(`All players answered: ${allAnswered}`);
+      
+      if (allAnswered) {
+        // Update game state to show we're showing the correct answer
         await update(gameRef, {
-          allPlayersAnswered: true,
+          showingCorrectAnswer: true,
+          allPlayersAnswered: true
         });
-        console.log("Firebase state updated: allPlayersAnswered=true");
       }
+      
+      return allAnswered;
     } catch (error) {
-      console.error("Error checking player answers:", error);
+      console.error("Error checking if all players answered:", error);
+      return false;
     }
   };
 

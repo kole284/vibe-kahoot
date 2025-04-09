@@ -1,277 +1,184 @@
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { useEffect, useState, useRef } from 'react';
-import { useGame } from '../../context/GameContext';
-import { Question } from '../game/Question';
 import { Timer } from '../game/Timer';
-import { TeamCard } from '../game/TeamCard';
-import { ref, update } from 'firebase/database';
+import { useGame } from '../../context/GameContext';
 import { rtdb } from '../../lib/firebase/firebase';
-// Konstante
-const QUESTION_DURATION = 15; // 15 sekundi za svako pitanje
+import { ref, get, update } from 'firebase/database';
 
-export function ProjectorView() {
-  const { gameState, teams, currentQuestion, nextQuestion, checkAllPlayersAnswered } = useGame();
-  const [timeLeft, setTimeLeft] = useState(QUESTION_DURATION);
-  const [showingCorrectAnswer, setShowingCorrectAnswer] = useState(false);
-  const [leaderboardTimer, setLeaderboardTimer] = useState<number | null>(null);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const checkPlayersIntervalRef = useRef<NodeJS.Timeout | null>(null);
+export const ProjectorView: React.FC = () => {
+  const { gameState, currentQuestion, nextQuestion } = useGame();
+  const [showCorrectAnswer, setShowCorrectAnswer] = useState<boolean>(false);
+  const [timerKey, setTimerKey] = useState<number>(0);
+  const nextQuestionTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const gameId = gameState.session?.id;
-  const isGameActive = gameState.session?.status === 'playing' && !gameState.session?.isPaused;
+  // Log current game state for debugging
+  useEffect(() => {
+    console.log("Game state:", gameState);
+    console.log("Current question:", currentQuestion);
+    
+    // Reset timer key when question changes or when showing correct answer resets
+    if (currentQuestion) {
+      console.log("Resetting timer with new key");
+      setTimerKey(prev => prev + 1);
+      setShowCorrectAnswer(false);
+    }
+  }, [gameState?.session?.currentQuestionIndex, gameState?.session?.currentCategory, currentQuestion]);
+
+  // Additional effect to reset timer when allPlayersAnswered changes to false
+  useEffect(() => {
+    if (gameState?.session?.allPlayersAnswered === false && currentQuestion) {
+      console.log("All players answered reset to false, resetting timer");
+      setTimerKey(prev => prev + 1);
+      setShowCorrectAnswer(false);
+    }
+  }, [gameState?.session?.allPlayersAnswered, currentQuestion]);
+
+  // Check if all players have answered
+  useEffect(() => {
+    if (!gameState || !gameState.session || showCorrectAnswer) return;
+    
+    const checkInterval = setInterval(async () => {
+      try {
+        if (gameState.session?.allPlayersAnswered || gameState.session?.showingCorrectAnswer) {
+          console.log("All players answered or showing correct answer");
+          setShowCorrectAnswer(true);
+          clearInterval(checkInterval);
+        }
+      } catch (error) {
+        console.error("Error checking if all players answered:", error);
+      }
+    }, 500);
+    
+    return () => clearInterval(checkInterval);
+  }, [gameState, showCorrectAnswer]);
   
-  // Funkcija za ažuriranje vremena u Firebase-u
-  const updateTimeInFirebase = (seconds: number) => {
-    if (!gameId) return;
+  // Handle showing correct answer and moving to next question
+  useEffect(() => {
+    if (!showCorrectAnswer || !gameState) return;
     
-    const gameRef = ref(rtdb, `games/${gameId}`);
-    update(gameRef, { timeRemaining: seconds });
-  };
-
-  // Funkcija za prikazivanje tačnog odgovora na 3 sekunde pre prelaska na sledeće pitanje
-  const showCorrectAnswerAndProceed = () => {
-    if (!gameId) return;
+    console.log("Showing correct answer");
+    updateGameShowingCorrectAnswer();
     
-    // Očisti sve intervale
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-      timerIntervalRef.current = null;
-    }
-    
-    if (checkPlayersIntervalRef.current) {
-      clearInterval(checkPlayersIntervalRef.current);
-      checkPlayersIntervalRef.current = null;
-    }
-    
-    setShowingCorrectAnswer(true);
-    
-    // Ažuriraj Firebase da pokazuje tačan odgovor
-    const gameRef = ref(rtdb, `games/${gameId}`);
-    update(gameRef, { 
-      showingCorrectAnswer: true,
-      timeRemaining: 0 // Osiguraj da je tajmer na 0
-    });
-    
-    // Sačekaj 3 sekunde, pa pređi na sledeće pitanje
-    setTimeout(() => {
-      setShowingCorrectAnswer(false);
+    const nextQuestionTimer = setTimeout(() => {
+      console.log("Moving to next question after showing correct answer");
       nextQuestion();
-    }, 3000);
-  };
+      setShowCorrectAnswer(false);
+    }, 5000);
+    
+    return () => clearTimeout(nextQuestionTimer);
+  }, [showCorrectAnswer, gameState, nextQuestion]);
 
-  // Glavni useEffect za tajmer
-  useEffect(() => {
-    // Reset tajmera i stanja kada se pitanje promeni ili igra pauzira/završi
-    if (!isGameActive || !currentQuestion) {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
+  const handleTimerComplete = async () => {
+    console.log("Timer completed, showing correct answer");
+    
+    // First update local state
+    setShowCorrectAnswer(true);
+    
+    // Then update Firebase state if not already done
+    try {
+      if (!gameState || !gameState.session || !gameState.session.id) {
+        console.error("Cannot update game state: missing session data");
+        return;
       }
-      return;
-    }
-    
-    // Postavi početno vreme
-    setTimeLeft(QUESTION_DURATION);
-    updateTimeInFirebase(QUESTION_DURATION);
-    
-    // Očisti prethodni interval ako postoji
-    if (timerIntervalRef.current) {
-      clearInterval(timerIntervalRef.current);
-    }
-    
-    // Pokreni novi interval za odbrojavanje
-    timerIntervalRef.current = setInterval(() => {
-      setTimeLeft(prev => {
-        const newTime = prev - 1;
-        
-        // Ažuriraj vreme u Firebase-u za sinhronizaciju sa igračima
-        updateTimeInFirebase(newTime);
-        
-        // Proveri da li su svi igrači odgovorili
-        if (gameState.session?.allPlayersAnswered) {
-          clearInterval(timerIntervalRef.current!);
-          timerIntervalRef.current = null;
-          showCorrectAnswerAndProceed();
-          return 0;
-        }
-        
-        // Ako je vreme isteklo, prikaži tačan odgovor i pređi na sledeće pitanje
-        if (newTime <= 0) {
-          clearInterval(timerIntervalRef.current!);
-          timerIntervalRef.current = null;
-          showCorrectAnswerAndProceed();
-          return 0;
-        }
-        
-        return newTime;
-      });
-    }, 1000);
-    
-    // Očisti interval kada se komponenta unmount-uje ili pitanje promeni
-    return () => {
-      if (timerIntervalRef.current) {
-        clearInterval(timerIntervalRef.current);
-        timerIntervalRef.current = null;
-      }
-    };
-  }, [currentQuestion?.id, isGameActive, gameState.session?.allPlayersAnswered]);
-  
-  // Effect za prikazivanje rezultata između rundi
-  useEffect(() => {
-    if (gameState.session?.showLeaderboard && leaderboardTimer === null) {
-      setLeaderboardTimer(10);
       
-      const interval = setInterval(() => {
-        setLeaderboardTimer(prev => {
-          if (prev === null || prev <= 1) {
-            clearInterval(interval);
-            nextQuestion();
-            return null;
-          }
-          return prev - 1;
+      const gameRef = ref(rtdb, `games/${gameState.session.id}`);
+      const snapshot = await get(gameRef);
+      
+      if (!snapshot.exists()) {
+        console.error("Game not found when trying to update state");
+        return;
+      }
+      
+      const gameData = snapshot.val();
+      
+      // Only update if not already showing correct answer
+      if (!gameData.showingCorrectAnswer) {
+        console.log("Updating Firebase: setting showingCorrectAnswer and allPlayersAnswered to true");
+        await update(gameRef, {
+          showingCorrectAnswer: true,
+          allPlayersAnswered: true
         });
-      }, 1000);
-      
-      return () => clearInterval(interval);
-    }
-    
-    if (!gameState.session?.showLeaderboard) {
-      setLeaderboardTimer(null);
-    }
-  }, [gameState.session?.showLeaderboard, leaderboardTimer, nextQuestion]);
-
-  // Effect za proveru da li su svi igrači odgovorili (nezavisno od tajmera)
-  useEffect(() => {
-    // Pokreni proveru igrača na svakih 500ms
-    if (isGameActive && !showingCorrectAnswer) {
-      checkPlayersIntervalRef.current = setInterval(() => {
-        checkAllPlayersAnswered();
-      }, 500);
-    }
-    
-    return () => {
-      if (checkPlayersIntervalRef.current) {
-        clearInterval(checkPlayersIntervalRef.current);
-        checkPlayersIntervalRef.current = null;
       }
-    };
-  }, [isGameActive, showingCorrectAnswer, checkAllPlayersAnswered]);
-
-  // Render glavnog sadržaja (pitanja ili rezultata)
-  const renderMainContent = () => {
-    if (!gameState.session) return null;
-    
-    // Prikazi tabelu rezultata između rundi
-    if (gameState.session.showLeaderboard) {
-      return (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-lg shadow-lg p-8"
-        >
-          <h2 className="text-4xl font-bold text-center mb-4">
-            Rezultati
-          </h2>
-          <p className="text-center text-xl mb-8">
-            Runda {gameState.session.currentRound + 1} završena!
-            <br />
-            Sledeća kategorija za {leaderboardTimer} sekundi...
-          </p>
-          <div className="grid grid-cols-1 gap-4">
-            {teams.sort((a, b) => b.score - a.score).map((team, index) => (
-              <motion.div
-                key={team.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="relative"
-              >
-                <div className="absolute -left-8 top-1/2 transform -translate-y-1/2 text-2xl font-bold text-gray-400">
-                  #{index + 1}
-                </div>
-                <TeamCard team={team} isActive={index < 3} />
-              </motion.div>
-            ))}
-          </div>
-        </motion.div>
-      );
+    } catch (error) {
+      console.error("Error in handleTimerComplete:", error);
     }
-    
-    // Kraj igre
-    if (gameState.session.status === 'finished') {
-      const winner = [...teams].sort((a, b) => b.score - a.score)[0];
-      
-      return (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-lg shadow-lg p-8"
-        >
-          <h2 className="text-4xl font-bold text-center mb-4">
-            Kraj igre!
-          </h2>
-          <div className="text-center mb-8">
-            <h3 className="text-3xl font-bold text-blue-600 mb-2">Pobednik</h3>
-            <p className="text-4xl">{winner?.name || 'Nema pobednika'}</p>
-            <p className="text-2xl text-gray-600">{winner?.score || 0} poena</p>
-          </div>
-          <div className="grid grid-cols-1 gap-4">
-            {teams.sort((a, b) => b.score - a.score).map((team, index) => (
-              <TeamCard key={team.id} team={team} isActive={index === 0} />
-            ))}
-          </div>
-        </motion.div>
-      );
-    }
-    
-    // Prikazi trenutno pitanje
-    return (
-      <>
-        {currentQuestion && (
-          <>
-            <div className="mb-4">
-              <Timer timeLeft={timeLeft} duration={QUESTION_DURATION} />
-            </div>
-            <Question showCorrectAnswer={showingCorrectAnswer} />
-          </>
-        )}
-      </>
-    );
   };
+
+  const updateGameShowingCorrectAnswer = async () => {
+    try {
+      if (!gameState || !gameState.session || !gameState.session.id) return;
+      console.log("Updating game state: showing correct answer");
+      
+      const gameRef = ref(rtdb, `games/${gameState.session.id}`);
+      await update(gameRef, {
+        showingCorrectAnswer: true,
+        allPlayersAnswered: true
+      });
+    } catch (error) {
+      console.error("Error updating game state:", error);
+    }
+  };
+
+  if (!gameState.session || !currentQuestion) {
+    return <div className="p-8 text-center">Loading question...</div>;
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100 p-8">
-      <div className="max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {/* Glavni sadržaj */}
-          <div className="md:col-span-2">
-            {renderMainContent()}
-          </div>
+    <div className="min-h-screen bg-accent flex flex-col">
+      <div className="p-8 max-w-4xl mx-auto">
+        <div className="mb-6">
+          <Timer
+            key={timerKey}
+            duration={30} // 30 seconds per question
+            isActive={!showCorrectAnswer}
+            skipTimer={gameState.session.allPlayersAnswered || false}
+            onComplete={handleTimerComplete}
+          />
+        </div>
 
-          {/* Tabela rezultata */}
-          <div className="bg-white rounded-lg shadow-lg p-6">
-            <h2 className="text-2xl font-bold mb-4">Rezultati</h2>
-            <div className="space-y-4">
-              {teams
-                .sort((a, b) => b.score - a.score)
-                .map((team, index) => (
-                  <motion.div
-                    key={team.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                  >
-                    <TeamCard team={team} isActive={index === 0} />
-                  </motion.div>
-                ))}
+        <div className="bg-accent rounded-lg p-6 mb-6 shadow-lg">
+          <h2 className="text-2xl font-bold mb-4">{currentQuestion.text}</h2>
+          
+          <div className="grid grid-cols-2 gap-4">
+            {currentQuestion.options.map((option, index) => {
+              const letters = ['A', 'B', 'C', 'D'];
+              const isCorrect = index === currentQuestion.correctOptionIndex;
               
-              {teams.length === 0 && (
-                <p className="text-gray-500 text-center">Nema timova</p>
-              )}
-            </div>
+              return (
+                <motion.div
+                  key={index}
+                  className={`p-4 rounded-lg ${
+                    showCorrectAnswer && isCorrect
+                      ? 'bg-highlight text-white'
+                      : showCorrectAnswer && !isCorrect
+                      ? 'bg-gray-300'
+                      : 'bg-white'
+                  } shadow flex items-center`}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <span className="text-xl font-bold mr-3">{letters[index]}.</span>
+                  <span className="text-lg">{option}</span>
+                  {showCorrectAnswer && isCorrect && (
+                    <span className="ml-auto text-2xl">✓</span>
+                  )}
+                </motion.div>
+              );
+            })}
           </div>
         </div>
+
+        {showCorrectAnswer && (
+          <motion.div
+            className="bg-highlight text-white p-4 rounded-lg text-center text-xl font-bold"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+          >
+            Correct Answer: {String.fromCharCode(65 + currentQuestion.correctOptionIndex)}
+          </motion.div>
+        )}
       </div>
     </div>
   );
-}
+};
