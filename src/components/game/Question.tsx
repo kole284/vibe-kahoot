@@ -2,7 +2,6 @@ import { motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useGame } from '../../context/GameContext';
-import { Timer } from './Timer';
 
 const optionColors = {
   A: 'bg-red-500',
@@ -14,10 +13,9 @@ const optionColors = {
 interface QuestionProps {
   showDebugInfo?: boolean;
   showCorrectAnswer?: boolean;
-  onShowCorrectAnswer?: () => void;
 }
 
-export function Question({ showDebugInfo = false, showCorrectAnswer = false, onShowCorrectAnswer }: QuestionProps) {
+export function Question({ showDebugInfo = false, showCorrectAnswer = false }: QuestionProps) {
   const { currentQuestion, submitAnswer, gameState, nextQuestion } = useGame();
   const [searchParams] = useSearchParams();
   const [debugInfo, setDebugInfo] = useState<string>('');
@@ -167,14 +165,6 @@ Game State: ${JSON.stringify(gameState, null, 2)}`;
             <span className="inline-block px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
               {gameState.session?.categories?.[gameState.session.currentCategory] || 'Category'} • Question {(gameState.session?.currentQuestionIndex || 0) + 1}/8
             </span>
-          </div>
-
-          <div className="mb-6">
-            <Timer
-              duration={15}
-              onComplete={() => onShowCorrectAnswer?.()}
-              isActive={!showCorrectAnswer && !isTransitioning && !gameState.session?.isPaused}
-            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

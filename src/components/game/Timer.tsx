@@ -46,6 +46,7 @@ export function Timer({ duration, onComplete, isActive }: TimerProps) {
         if (newTimeLeft <= 0) {
           clearTimer();
           setTimeLeft(0);
+          console.log("Timer ended, calling onComplete");
           onComplete();
         } else {
           setTimeLeft(newTimeLeft);
@@ -55,6 +56,7 @@ export function Timer({ duration, onComplete, isActive }: TimerProps) {
 
     // Cleanup
     return () => {
+      console.log("Cleaning up timer interval");
       clearTimer();
     };
   }, [isActive, duration, onComplete, clearTimer]);

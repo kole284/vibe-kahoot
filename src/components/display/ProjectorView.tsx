@@ -23,10 +23,11 @@ export function ProjectorView() {
 
   // Handle timer completion and question transitions
   const handleTimerComplete = useCallback(() => {
-    if (!gameState.session?.status === 'playing' || showingCorrectAnswer || isTransitioning) {
+    if (gameState.session?.status !== 'playing' || showingCorrectAnswer || isTransitioning) {
       return;
     }
-
+    
+    console.log("Timer completed, starting show answer sequence");
     setShowingCorrectAnswer(true);
     setIsTransitioning(true);
 
@@ -39,11 +40,24 @@ export function ProjectorView() {
 
     // Wait 3 seconds before moving to next question
     setTimeout(() => {
+      console.log("3 second delay finished, moving to next question");
       setShowingCorrectAnswer(false);
       nextQuestion();
       setIsTransitioning(false);
     }, 3000);
   }, [gameState.session?.id, gameState.session?.status, showingCorrectAnswer, isTransitioning, nextQuestion]);
+
+  // Effect to trigger transition when all players have answered (before timer ends)
+  useEffect(() => {
+    if (gameState.session?.allPlayersAnswered && 
+        gameState.session?.status === 'playing' && 
+        !showingCorrectAnswer && 
+        !isTransitioning) {
+          
+      console.log("All players answered before timer ended. Starting show answer sequence.");
+      handleTimerComplete();
+    }
+  }, [gameState.session?.allPlayersAnswered, gameState.session?.status, showingCorrectAnswer, isTransitioning, handleTimerComplete]);
 
   // Handle leaderboard display between rounds
   useEffect(() => {
