@@ -6,7 +6,6 @@ import { Timer } from '../game/Timer';
 import { TeamCard } from '../game/TeamCard';
 import { ref, update } from 'firebase/database';
 import { rtdb } from '../../lib/firebase/firebase';
-
 // Konstante
 const QUESTION_DURATION = 15; // 15 sekundi za svako pitanje
 
